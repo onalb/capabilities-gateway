@@ -1,0 +1,25 @@
+# Local capabilities gateway. The deal and vacancy apps call it only when
+# CAPABILITIES_GATEWAY_URL is set on those apps. This file does not start them.
+
+services:
+  capabilities-gateway:
+    build: .
+    ports:
+      - "8010:8010"
+    environment:
+      PORT: "8010"
+      # Vacancy app MCP (ask_vacancy). Override for a local vacancy container.
+      VACANCY_MCP_URL: ${VACANCY_MCP_URL:-https://vacancy-agent.purplegrass-79f82a02.eastus.azurecontainerapps.io/mcp}
+      VACANCY_FIT_DIR: /app/data/fits
+      # Point at the deal app's dynamodb-local to read vault rolls. Unset = memory store.
+      DDB_ENDPOINT: ${DDB_ENDPOINT:-}
+      DDB_TABLE: ${DDB_TABLE:-ml_interview}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-local}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-local}
+      AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-}
+      AZURE_STORAGE_CONTAINER: ${AZURE_STORAGE_CONTAINER:-fits}
+    volumes:
+      - ./data/fits:/app/data/fits
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
