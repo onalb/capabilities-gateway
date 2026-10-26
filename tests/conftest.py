@@ -9,6 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from capabilities_gateway.app import app
+from capabilities_gateway.deal.predict import reset_predict_state
 from capabilities_gateway.deal.vault import reset_memory
 
 
@@ -21,5 +22,7 @@ def client():
 @pytest.fixture(autouse=True)
 def _reset_vault_memory():
     reset_memory()
+    reset_predict_state()
     yield
     reset_memory()
+    reset_predict_state()

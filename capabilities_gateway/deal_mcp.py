@@ -11,8 +11,8 @@ mcp = MCPServer(
     "capabilities-deal",
     instructions=(
         "Deal capabilities: vault counts, income, NOI, cap rate, geocode, "
-        "web search, memos, and vacancy answer. "
-        "ask_vacancy forwards to the vacancy app and returns its sentence. "
+        "web search, memos, floor-plan vacancy on the vault roll, and "
+        "ask_prediction_agent (forwards to the vacancy app ask_vacancy). "
         "This path cannot parse, fit, load, save, or score a rent roll."
     ),
 )
@@ -101,13 +101,38 @@ def publish_memo(
 
 
 @mcp.tool()
-def ask_vacancy(question: str, session_id: str = "") -> str:
-    """Vacancy answer. Forwards to the vacancy app ask_vacancy tool.
+def ask_vacancy_agent(
+    floor_plan: str | None = None,
+    username: str = "",
+    as_of: str = "",
+) -> str:
+    """Probability a floor plan is vacant, fit on this user's vault roll.
 
-    question is the user text (floor plan or forecast). Reuse session_id on a
-    follow-up. This tool does not parse, fit, or save.
+    Does not call the vacancy app. Omit floor_plan to score every plan.
     """
-    return tools.ask_vacancy(question, session_id=session_id)
+    return tools.ask_vacancy_agent(floor_plan=floor_plan, username=username, as_of=as_of)
+
+
+@mcp.tool()
+def ask_prediction_agent(
+    horizon_months: int = 12,
+    question: str = "",
+    session_id: str = "",
+    username: str = "",
+    as_of: str = "",
+) -> str:
+    """Forecast occupancy. Forwards to the vacancy app MCP tool ask_vacancy.
+
+    question is the user text. Reuse session_id on a follow-up. This tool does
+    not parse, fit, or save, and it does not score the vault roll itself.
+    """
+    return tools.ask_prediction_agent(
+        horizon_months=horizon_months,
+        question=question,
+        session_id=session_id,
+        username=username,
+        as_of=as_of,
+    )
 
 
 def http_app():

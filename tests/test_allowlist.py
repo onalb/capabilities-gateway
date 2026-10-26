@@ -16,7 +16,8 @@ DEAL_TOOLS = {
     "osm_geocode",
     "web_search",
     "publish_memo",
-    "ask_vacancy",
+    "ask_vacancy_agent",
+    "ask_prediction_agent",
 }
 VACANCY_TOOLS = {
     "parse_rent_roll_file",
@@ -142,7 +143,8 @@ def test_vacancy_caller_cannot_use_deal_tools(client: TestClient):
         "osm_geocode",
         "web_search",
         "publish_memo",
-        "ask_vacancy",
+        "ask_vacancy_agent",
+        "ask_prediction_agent",
     ):
         payload = _call(client, "/mcp/vacancy", name, {})
         assert _failed(payload), payload

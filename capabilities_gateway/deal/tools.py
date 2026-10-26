@@ -30,7 +30,8 @@ DEAL_TOOL_NAMES = (
     "osm_geocode",
     "web_search",
     "publish_memo",
-    "ask_vacancy",
+    "ask_vacancy_agent",
+    "ask_prediction_agent",
 )
 VACANCY_ONLY_TOOL_NAMES = (
     "parse_rent_roll_file",
@@ -294,8 +295,60 @@ def publish_memo(
     )
 
 
-def ask_vacancy(question: str, session_id: str = "") -> str:
-    """Forward to the vacancy app's ask_vacancy. Does not parse, fit, or save."""
-    from capabilities_gateway.deal.forward import forward_ask_vacancy
+def ask_vacancy_agent(
+    floor_plan: str | None = None,
+    username: str = "",
+    as_of: str = "",
+) -> str:
+    """Logistic vacancy probability by floor plan on this user's vault roll.
 
-    return forward_ask_vacancy(question, session_id)
+    Does not call the vacancy app. A vacant headcount stays query_units.
+    """
+    from capabilities_gateway.deal.vacancy_agent import VacancyAgent
+
+    roll = _roll(username)
+    if roll is None:
+        return _need_file("ask_vacancy_agent")
+    day = (as_of or "").strip() or roll.as_of
+    units: list[dict[str, Any]] = []
+    for unit in roll.units:
+        occ = (unit.occupancy or "").lower()
+        if "model" in occ or "excluded" in occ:
+            continue
+        units.append(
+            {
+                "plan": (unit.unit_type or "unknown").strip() or "unknown",
+                "vacant": bool(unit.vacant_on(day)),
+            }
+        )
+    return json.dumps(VacancyAgent().run(units, floor_plan=floor_plan))
+
+
+def ask_prediction_agent(
+    horizon_months: int = 12,
+    question: str = "",
+    session_id: str = "",
+    username: str = "",
+    as_of: str = "",
+) -> str:
+    """Forward a forecast question to the vacancy app MCP tool ask_vacancy.
+
+    VACANCY_MCP_URL is that app's POST /mcp. This tool does not parse, fit, or save.
+    """
+    from capabilities_gateway.deal.predict import forecast, vault_facts
+
+    ctx = None
+    roll = _roll(username)
+    if roll is not None:
+        ctx = vault_facts(roll, (as_of or "").strip() or roll.as_of)
+    try:
+        result = forecast(
+            username,
+            question,
+            horizon_months=int(horizon_months or 12),
+            vault=ctx,
+            session_id=session_id,
+        )
+    except Exception as exc:  # noqa: BLE001 — tool error, do not crash the MCP call
+        result = {"ok": False, "error": str(exc), "source": "vacancy-prediction-agent"}
+    return json.dumps(result)
