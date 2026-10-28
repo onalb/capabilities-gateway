@@ -1,1 +1,1 @@
-"""Vacancy parse, fit, load, save, and score. No ask_vacancy here."""
+"""Vacancy parse, fit, load, save, delete, and score. No ask_vacancy here."""

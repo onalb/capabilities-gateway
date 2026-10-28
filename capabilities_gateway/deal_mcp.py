@@ -5,6 +5,8 @@ from __future__ import annotations
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
+from capabilities_gateway.call_log import ToolCallLog
+from capabilities_gateway.checklist_mcp import mount_checklist_tools
 from capabilities_gateway.deal import tools
 
 mcp = MCPServer(
@@ -13,8 +15,12 @@ mcp = MCPServer(
         "Deal capabilities: vault counts, income, NOI, cap rate, geocode, "
         "web search, memos, floor-plan vacancy on the vault roll, and "
         "ask_prediction_agent (forwards to the vacancy app ask_vacancy). "
-        "This path cannot parse, fit, load, save, or score a rent roll."
+        "create_plan, update_plan, update_plan_status, and reflection are "
+        "stateless: the deal app sends the checklist and writes back the "
+        "returned rows. This path cannot parse, fit, load, list trained properties, "
+        "save, delete, or score a rent roll."
     ),
+    middleware=[ToolCallLog("/mcp/deal")],
 )
 
 _SECURITY = TransportSecuritySettings(enable_dns_rebinding_protection=False)
@@ -133,6 +139,9 @@ def ask_prediction_agent(
         username=username,
         as_of=as_of,
     )
+
+
+mount_checklist_tools(mcp, "deal")
 
 
 def http_app():

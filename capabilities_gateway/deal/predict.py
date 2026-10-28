@@ -155,8 +155,8 @@ def build_forecast_question(
     else:
         lines.append(
             "If no building is named in the question, do not assume a vault or trained "
-            "property. load_fit(\"\") and say which properties are trained, or ask which "
-            "building to score."
+            "property. Call list_trained_properties and say which properties are trained, "
+            "or ask which building to score. Do not call load_fit with an empty name."
         )
     lines.append("Question: " + asked)
     return "\n".join(lines)

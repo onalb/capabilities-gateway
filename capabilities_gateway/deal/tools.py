@@ -37,6 +37,7 @@ VACANCY_ONLY_TOOL_NAMES = (
     "parse_rent_roll_file",
     "fit_vacancy",
     "load_fit",
+    "list_trained_properties",
     "save_fit",
     "score_vacancy",
 )

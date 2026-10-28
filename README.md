@@ -6,8 +6,8 @@ The allowlist is the URL. There is no password.
 
 | Caller | Path | Tools |
 | --- | --- | --- |
-| Deal agent | `POST /mcp/deal` | `query_units`, `compute_income`, `compute_noi`, `compute_cap_rate`, `osm_geocode`, `web_search`, `publish_memo`, `ask_vacancy_agent`, `ask_prediction_agent` |
-| Vacancy agent | `POST /mcp/vacancy` | `parse_rent_roll_file`, `fit_vacancy`, `load_fit`, `save_fit`, `score_vacancy` |
+| Deal agent | `POST /mcp/deal` | `query_units`, `compute_income`, `compute_noi`, `compute_cap_rate`, `osm_geocode`, `web_search`, `publish_memo`, `ask_vacancy_agent`, `ask_prediction_agent`, `create_plan`, `update_plan`, `update_plan_status`, `reflection` |
+| Vacancy agent | `POST /mcp/vacancy` | `parse_rent_roll_file`, `fit_vacancy`, `load_fit`, `save_fit`, `delete_fit`, `score_vacancy`, `create_plan`, `update_plan`, `update_plan_status`, `reflection` |
 
 `ask_prediction_agent` on `/mcp/deal` forwards `{question, session_id}` to the vacancy app's own `POST /mcp` tool `ask_vacancy` (`VACANCY_MCP_URL`). `ask_vacancy_agent` scores floor-plan vacancy on that user's vault roll inside this process and does not call the vacancy app. The vacancy app does not call `/mcp/deal`, so the two directions do not loop. There is no `/mcp/deal` tool named `ask_vacancy`.
 
@@ -33,8 +33,10 @@ docker compose up -d --build
 
 Set `CAPABILITIES_GATEWAY_URL` (example `http://127.0.0.1:8010`) on the deal app and the vacancy app.
 
-- Deal: the nine capability tools post to `{URL}/mcp/deal`. Skills are fetched from `{URL}/skills/{name}`. Harness tools (`create_plan`, `update_plan`, `update_plan_status`, `reflection`, `score_gcr`) stay in the deal process. When the variable is unset, those nine tools return an error that the capabilities gateway is required. They do not run in the deal process.
-- Vacancy: `parse_rent_roll_file`, `fit_vacancy`, `load_fit`, `save_fit`, and `score_vacancy` post to `{URL}/mcp/vacancy`. `ask_vacancy` stays on the vacancy app. When the variable is unset, those tools stay local and the skill is `skills/vacancy/SKILL.md`.
+- Deal: the nine capability tools and the four checklist tools post to `{URL}/mcp/deal`. Skills are fetched from `{URL}/skills/{name}`. `score_gcr` stays in the deal process. When the variable is unset, those tools return an error that the capabilities gateway is required. They do not run in the deal process. The deal app sends the current checklist plus `last_work_tool` and `last_work_status`, and stores the checklist the gateway returns.
+- Vacancy: `parse_rent_roll_file`, `fit_vacancy`, `load_fit`, `save_fit`, `delete_fit`, `score_vacancy`, and the same four checklist tools post to `{URL}/mcp/vacancy`. `ask_vacancy` stays on the vacancy app. When the variable is unset, the math tools stay local and the skill is `skills/vacancy/SKILL.md`. The checklist tools return the gateway-required error. The vacancy app holds the checklist the same way the deal app does.
+
+`delete_fit` is on `POST /mcp/vacancy` only. This gateway is stateless. It deletes a fit file only when the call includes `confirm=true`. The vacancy app holds the pending confirmation on the chat session and sends `confirm=true` only after the user agrees to that same scope. A direct call to this gateway is not a user prompt. The model-facing vacancy tool still requires the two-step flow and does not forward `confirm=true` until that session check passes, so the model cannot skip the user.
 
 ## Env
 

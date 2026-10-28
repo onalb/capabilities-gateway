@@ -8,6 +8,12 @@ from starlette.testclient import TestClient
 
 from capabilities_gateway.deal.vault import put_memory_roll
 
+_CHECKLIST = {
+    "create_plan",
+    "update_plan",
+    "update_plan_status",
+    "reflection",
+}
 DEAL_TOOLS = {
     "query_units",
     "compute_income",
@@ -18,13 +24,17 @@ DEAL_TOOLS = {
     "publish_memo",
     "ask_vacancy_agent",
     "ask_prediction_agent",
+    *_CHECKLIST,
 }
 VACANCY_TOOLS = {
     "parse_rent_roll_file",
     "fit_vacancy",
     "load_fit",
+    "list_trained_properties",
     "save_fit",
+    "delete_fit",
     "score_vacancy",
+    *_CHECKLIST,
 }
 
 _INIT = {
@@ -129,7 +139,15 @@ def test_vacancy_lists_only_vacancy_tools(client: TestClient):
 
 
 def test_deal_caller_cannot_fit_or_save(client: TestClient):
-    for name in ("parse_rent_roll_file", "fit_vacancy", "load_fit", "save_fit", "score_vacancy"):
+    for name in (
+        "parse_rent_roll_file",
+        "fit_vacancy",
+        "load_fit",
+        "list_trained_properties",
+        "save_fit",
+        "delete_fit",
+        "score_vacancy",
+    ):
         payload = _call(client, "/mcp/deal", name, {})
         assert _failed(payload), payload
 
@@ -202,6 +220,9 @@ def test_vacancy_fit_roundtrip_on_its_path(client: TestClient, tmp_path, monkeyp
     model_text = fitted["result"]["content"][0]["text"]
     model = json.loads(model_text)
     assert model["reference_plan"]
+    assert all("probability" not in group for group in model["groups"])
+    for group in model["groups"]:
+        group["probability"] = 0.99
     saved = _call(
         client,
         "/mcp/vacancy",
@@ -209,6 +230,8 @@ def test_vacancy_fit_roundtrip_on_its_path(client: TestClient, tmp_path, monkeyp
         {"property_name": "Hill", "as_of": "2024-01-31", "model": model},
     )
     assert json.loads(saved["result"]["content"][0]["text"])["saved"] is True
+    written = json.loads((tmp_path / "hill.json").read_text(encoding="utf-8"))
+    assert all("probability" not in group for group in written["groups"])
     loaded = _call(client, "/mcp/vacancy", "load_fit", {"property_name": "Hill"})
     catalog = json.loads(loaded["result"]["content"][0]["text"])
     assert "probability" not in catalog
@@ -221,4 +244,5 @@ def test_vacancy_fit_roundtrip_on_its_path(client: TestClient, tmp_path, monkeyp
     )
     score = json.loads(scored["result"]["content"][0]["text"])
     assert "probability" in score
+    assert score["probability"] != 0.99
     reset_store()
