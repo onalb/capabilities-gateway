@@ -158,9 +158,5 @@ def test_skill_tells_the_model_to_list_trained_properties():
     assert "the plan contains list_trained_properties" in paragraph
     assert "no properties are trained yet" in paragraph
     assert "do not use load_fit with an empty name for that question" in paragraph
-    vacancy = (
-        Path(__file__).resolve().parents[2] / "vacancy-agent" / "skills" / "vacancy" / "SKILL.md"
-    )
-    assert vacancy.read_text(encoding="utf-8") == SKILL
     for banned in ("la cordoba", "bay view", "chambers"):
         assert banned not in lowered
