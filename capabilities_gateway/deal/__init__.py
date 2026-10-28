@@ -1,1 +1,1 @@
-"""Deal capability tools executed inside the gateway process."""
+"""Deal capability tools. The tools Lambda handler calls these."""

@@ -7,7 +7,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from capabilities_gateway.call_log import ToolCallLog
 from capabilities_gateway.checklist_mcp import mount_checklist_tools
-from capabilities_gateway.deal import tools
+from capabilities_gateway.invoke import call_tool
 
 mcp = MCPServer(
     "capabilities-deal",
@@ -34,8 +34,14 @@ def query_units(
     as_of: str = "",
 ) -> str:
     """Read vault unit counts for username. The deal app injects username."""
-    return tools.query_units(
-        occupancy=occupancy, vacant_only=vacant_only, username=username, as_of=as_of
+    return call_tool(
+        "query_units",
+        {
+            "occupancy": occupancy,
+            "vacant_only": vacant_only,
+            "username": username,
+            "as_of": as_of,
+        },
     )
 
 
@@ -46,8 +52,9 @@ def compute_income(
     as_of: str = "",
 ) -> str:
     """In-place and full-occupancy income from the vaulted roll."""
-    return tools.compute_income(
-        vacant_fill_rent=vacant_fill_rent, username=username, as_of=as_of
+    return call_tool(
+        "compute_income",
+        {"vacant_fill_rent": vacant_fill_rent, "username": username, "as_of": as_of},
     )
 
 
@@ -58,8 +65,9 @@ def compute_noi(
     as_of: str = "",
 ) -> str:
     """NOI from annualized in-place income minus stated expenses."""
-    return tools.compute_noi(
-        operating_expenses=operating_expenses, username=username, as_of=as_of
+    return call_tool(
+        "compute_noi",
+        {"operating_expenses": operating_expenses, "username": username, "as_of": as_of},
     )
 
 
@@ -71,15 +79,16 @@ def compute_cap_rate(
     as_of: str = "",
 ) -> str:
     """Implied cap rate. ask_price is required."""
-    return tools.compute_cap_rate(
-        ask_price=ask_price, noi=noi, username=username, as_of=as_of
+    return call_tool(
+        "compute_cap_rate",
+        {"ask_price": ask_price, "noi": noi, "username": username, "as_of": as_of},
     )
 
 
 @mcp.tool()
 def osm_geocode(query: str, username: str = "") -> str:
     """Geocode a street or place."""
-    return tools.osm_geocode(query, username=username)
+    return call_tool("osm_geocode", {"query": query, "username": username})
 
 
 @mcp.tool()
@@ -90,8 +99,14 @@ def web_search(
     username: str = "",
 ) -> str:
     """Search the public web."""
-    return tools.web_search(
-        query, max_results=max_results, force_fail=force_fail, username=username
+    return call_tool(
+        "web_search",
+        {
+            "query": query,
+            "max_results": max_results,
+            "force_fail": force_fail,
+            "username": username,
+        },
     )
 
 
@@ -103,7 +118,10 @@ def publish_memo(
     hitl_allow: bool = False,
 ) -> str:
     """Stage or publish a memo. hitl_allow is set by the deal app after Approve."""
-    return tools.publish_memo(title, body, username=username, hitl_allow=hitl_allow)
+    return call_tool(
+        "publish_memo",
+        {"title": title, "body": body, "username": username, "hitl_allow": hitl_allow},
+    )
 
 
 @mcp.tool()
@@ -116,7 +134,10 @@ def ask_vacancy_agent(
 
     Does not call the vacancy app. Omit floor_plan to score every plan.
     """
-    return tools.ask_vacancy_agent(floor_plan=floor_plan, username=username, as_of=as_of)
+    return call_tool(
+        "ask_vacancy_agent",
+        {"floor_plan": floor_plan, "username": username, "as_of": as_of},
+    )
 
 
 @mcp.tool()
@@ -132,12 +153,15 @@ def ask_prediction_agent(
     question is the user text. Reuse session_id on a follow-up. This tool does
     not parse, fit, or save, and it does not score the vault roll itself.
     """
-    return tools.ask_prediction_agent(
-        horizon_months=horizon_months,
-        question=question,
-        session_id=session_id,
-        username=username,
-        as_of=as_of,
+    return call_tool(
+        "ask_prediction_agent",
+        {
+            "horizon_months": horizon_months,
+            "question": question,
+            "session_id": session_id,
+            "username": username,
+            "as_of": as_of,
+        },
     )
 
 

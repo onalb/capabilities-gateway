@@ -7,7 +7,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from capabilities_gateway.call_log import ToolCallLog
 from capabilities_gateway.checklist_mcp import mount_checklist_tools
-from capabilities_gateway.vacancy_math import tools
+from capabilities_gateway.invoke import call_tool
 
 mcp = MCPServer(
     "capabilities-vacancy",
@@ -38,33 +38,37 @@ def parse_rent_roll_file(
     content_base64: str = "",
 ) -> dict:
     """Parse workbook bytes into a plan table. Does not save."""
-    return tools.parse_rent_roll_file(
-        file_id=file_id, filename=filename, content_base64=content_base64
+    return call_tool(
+        "parse_rent_roll_file",
+        {"file_id": file_id, "filename": filename, "content_base64": content_base64},
     )
 
 
 @mcp.tool()
 def fit_vacancy(plans: list[dict]) -> dict:
     """Fit logistic regression from a plan table. Does not save."""
-    return tools.fit_vacancy(plans)
+    return call_tool("fit_vacancy", {"plans": plans})
 
 
 @mcp.tool()
 def list_trained_properties() -> dict:
     """Names of properties this model is trained on. Does not score, fit, or delete."""
-    return tools.list_trained_properties()
+    return call_tool("list_trained_properties", {})
 
 
 @mcp.tool()
 def load_fit(property_name: str = "") -> dict:
     """One named building's plan names. No probabilities. Does not list every property."""
-    return tools.load_fit(property_name)
+    return call_tool("load_fit", {"property_name": property_name})
 
 
 @mcp.tool()
 def save_fit(property_name: str, as_of: str, model: dict) -> dict:
     """Save one building fit returned by fit_vacancy."""
-    return tools.save_fit(property_name, as_of, model)
+    return call_tool(
+        "save_fit",
+        {"property_name": property_name, "as_of": as_of, "model": model},
+    )
 
 
 @mcp.tool()
@@ -82,15 +86,23 @@ def delete_fit(
     model-facing vacancy tool requires the two-step flow and withholds confirm
     until the same scope is pending. all_properties removes every fit JSON.
     """
-    return tools.delete_fit(
-        property_name, all_properties=all_properties, confirm=confirm
+    return call_tool(
+        "delete_fit",
+        {
+            "property_name": property_name,
+            "all_properties": all_properties,
+            "confirm": confirm,
+        },
     )
 
 
 @mcp.tool()
 def score_vacancy(building: str, plan: str = "", renovated: int | None = None) -> dict:
     """Score p(vacant) for one saved building and one floor plan."""
-    return tools.score_vacancy(building, plan, renovated)
+    return call_tool(
+        "score_vacancy",
+        {"building": building, "plan": plan, "renovated": renovated},
+    )
 
 
 mount_checklist_tools(mcp, "vacancy")

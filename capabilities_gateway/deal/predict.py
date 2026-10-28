@@ -59,6 +59,30 @@ def user_named_property(question: str, property_name: str = "") -> bool:
     return name.lower() in asked.lower()
 
 
+_TIME_PHRASE_RE = re.compile(
+    r"^(?:the\s+)?(?:next|last|coming|following)\b|^\d+\s+months?$",
+    re.I,
+)
+_SKILL_LEAK_RE = re.compile(r"^(?:i loaded the vacancy skill\.\s*)+", re.I)
+
+
+def building_phrase(question: str) -> str:
+    """Building written after 'for' in the user question. Empty when they named none."""
+    asked = re.sub(r"\?+$", "", (question or "").strip()).strip()
+    match = re.search(r"\bfor\s+(.+?)(?:\s+as of\s+.+)?$", asked, re.I)
+    if not match:
+        return ""
+    name = match.group(1).strip(" .\"'")
+    if not name or _generic_property_label(name) or _TIME_PHRASE_RE.match(name):
+        return ""
+    return name
+
+
+def strip_skill_narration(answer: str) -> str:
+    """Drop a leading 'I loaded the vacancy skill' so the deal quote stays the answer."""
+    return _SKILL_LEAK_RE.sub("", (answer or "").strip()).strip()
+
+
 def is_followup_reply(message: str) -> bool:
     asked = (message or "").strip()
     if not asked:
@@ -121,6 +145,7 @@ def build_forecast_question(
     name = str(vault.get("property_name") or "").strip()
     as_of = str(vault.get("as_of") or "").strip()
     asked = (question or "").strip()
+    spoken = building_phrase(asked)
     named = user_named_property(asked, name)
     occupancy_only = bool(asked) and bool(_OCCUPANCY_ONLY_RE.match(asked))
     if occupancy_only:
@@ -152,6 +177,16 @@ def build_forecast_question(
             f"vacant_count={vault.get('vacant_count')}",
         ]
         lines.append("Book snapshot for context only (not a file to parse): " + "; ".join(bits) + ".")
+    elif spoken:
+        lines.append(
+            f"The question names {spoken}. Call load_fit with that name. "
+            "If load_fit says it is not saved, call list_trained_properties and say "
+            f"{spoken} is not trained, listing which properties are trained. "
+            "If none are trained, say no properties are trained yet. "
+            "Do not say that a skill was loaded. Do not ask for a different building "
+            "when no properties are trained. Do not substitute the vault property. "
+            "Do not call load_fit with an empty name."
+        )
     else:
         lines.append(
             "If no building is named in the question, do not assume a vault or trained "
@@ -179,7 +214,7 @@ def forecast(
         prompt = asked
     else:
         prompt = build_forecast_question(question, horizon_months=horizon_months, vault=vault)
-    answer = forward_ask_vacancy(prompt, state["session_id"])
+    answer = strip_skill_narration(forward_ask_vacancy(prompt, state["session_id"]))
     awaiting = looks_like_clarification(answer)
     state["awaiting_followup"] = awaiting
     return {

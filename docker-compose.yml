@@ -8,11 +8,14 @@ services:
       - "8010:8010"
     environment:
       PORT: "8010"
-      # Vacancy app MCP (ask_vacancy). Override for a local vacancy container.
-      VACANCY_MCP_URL: ${VACANCY_MCP_URL:-https://vacancy-agent.purplegrass-79f82a02.eastus.azurecontainerapps.io/mcp}
+      # Blank runs capabilities_gateway.tools_lambda.handler in this container.
+      TOOLS_LAMBDA_ARN: ${TOOLS_LAMBDA_ARN:-}
+      # Vacancy app MCP (ask_vacancy) on the host. The public container is an override.
+      VACANCY_MCP_URL: ${VACANCY_MCP_URL:-http://host.docker.internal:8000/mcp}
       VACANCY_FIT_DIR: /app/data/fits
-      # Point at the deal app's dynamodb-local to read vault rolls. Unset = memory store.
-      DDB_ENDPOINT: ${DDB_ENDPOINT:-}
+      # Deal app publishes dynamodb-local on the host at 8003. Unset in a
+      # bare process still uses the in-memory vault.
+      DDB_ENDPOINT: ${DDB_ENDPOINT:-http://host.docker.internal:8003}
       DDB_TABLE: ${DDB_TABLE:-ml_interview}
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-local}

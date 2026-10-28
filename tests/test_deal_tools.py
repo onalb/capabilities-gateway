@@ -216,3 +216,40 @@ def test_forecast_question_keeps_a_named_property_only():
     )
     assert "Score occupancy for La Cordoba as of 2024-06-01" in named
     assert "unit_count=164" in named
+
+
+def test_forecast_question_loads_a_building_that_is_not_the_vault():
+    prompt = build_forecast_question(
+        "What occupancy do you predict for LA Cordoba?",
+        vault={
+            "property_name": "Chambers Hill Elementary School-20231024-180834 - 252",
+            "as_of": "2023-10-24",
+            "unit_count": 252,
+            "occupancy_pct": 0.8849,
+            "vacant_count": 29,
+        },
+    )
+    assert "The question names LA Cordoba" in prompt
+    assert "Call load_fit with that name" in prompt
+    assert "list_trained_properties" in prompt
+    assert "no properties are trained yet" in prompt
+    assert "no building is named" not in prompt.lower()
+    assert "Chambers Hill" not in prompt
+    assert "0.8849" not in prompt
+    assert "What occupancy do you predict for LA Cordoba?" in prompt
+
+
+def test_forecast_strips_skill_narration(monkeypatch):
+    reset_predict_state()
+
+    def fake_call(url, name, arguments, client_name="x"):
+        return (
+            "I loaded the vacancy skill. LA Cordoba is not trained. "
+            "No properties are trained yet."
+        )
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    body = forecast("ada", "What occupancy do you predict for LA Cordoba?")
+    assert body["answer"] == "LA Cordoba is not trained. No properties are trained yet."
+    assert body["awaiting_followup"] is True

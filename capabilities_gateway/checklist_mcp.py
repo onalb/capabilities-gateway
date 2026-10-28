@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from capabilities_gateway.checklist import apply_checklist
+from capabilities_gateway.invoke import call_tool
 
 
 def mount_checklist_tools(mcp: Any, route: str) -> None:
@@ -24,8 +24,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         The app sends checklist, last_work_tool, and last_work_status.
         This server does not keep the checklist.
         """
-        return apply_checklist(
-            route,
+        return call_tool(
             "create_plan",
             {
                 "tasks": tasks,
@@ -35,6 +34,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
                 "ran_ok": ran_ok,
                 "status_since_work": status_since_work,
             },
+            route=route,
         )
 
     @mcp.tool()
@@ -52,8 +52,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         On /mcp/deal, a failed web_search whose replacement is only more
         search tasks is ok and does not install that list.
         """
-        return apply_checklist(
-            route,
+        return call_tool(
             "update_plan",
             {
                 "tasks": tasks,
@@ -63,6 +62,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
                 "ran_ok": ran_ok,
                 "status_since_work": status_since_work,
             },
+            route=route,
         )
 
     @mcp.tool()
@@ -79,8 +79,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         status_since_work is true when this turn already called
         update_plan_status and no work tool has run since that call.
         """
-        return apply_checklist(
-            route,
+        return call_tool(
             "update_plan_status",
             {
                 "tasks": tasks,
@@ -90,6 +89,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
                 "ran_ok": ran_ok,
                 "status_since_work": status_since_work,
             },
+            route=route,
         )
 
     @mcp.tool()
@@ -106,8 +106,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
 
         Hint sentences are appended by the calling app, not here.
         """
-        return apply_checklist(
-            route,
+        return call_tool(
             "reflection",
             {
                 "analysis": analysis,
@@ -118,4 +117,5 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
                 "ran_ok": ran_ok,
                 "status_since_work": status_since_work,
             },
+            route=route,
         )

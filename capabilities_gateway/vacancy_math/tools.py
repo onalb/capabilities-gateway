@@ -40,6 +40,13 @@ def reset_store() -> None:
 
 
 def fits() -> FitStore:
+    """Client for ``VACANCY_FIT_DIR`` or Azure Blob. Each call reads that store.
+
+    The cached object is the client, not the fit JSON. A Lambda warm start
+    does not reuse a previous call's records from memory. Local runs and
+    pytest use the directory and do not need AWS. A deployed tools Lambda
+    should set ``AZURE_STORAGE_ACCOUNT`` or a durable ``VACANCY_FIT_DIR``.
+    """
     global _store
     if _store is None:
         _store = open_store()

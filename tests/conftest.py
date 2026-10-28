@@ -20,7 +20,8 @@ def client():
 
 
 @pytest.fixture(autouse=True)
-def _reset_vault_memory():
+def _reset_vault_memory(monkeypatch):
+    monkeypatch.delenv("TOOLS_LAMBDA_ARN", raising=False)
     reset_memory()
     reset_predict_state()
     yield
