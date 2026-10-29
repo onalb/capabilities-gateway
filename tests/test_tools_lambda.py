@@ -145,7 +145,7 @@ def _call(client: TestClient, path: str, name: str, arguments: dict) -> dict:
     return response.json()
 
 
-def test_mcp_deal_calls_handler_when_arn_is_unset(client: TestClient, monkeypatch):
+def test_call_tool_uses_handler_when_arn_is_unset(monkeypatch):
     monkeypatch.delenv("TOOLS_LAMBDA_ARN", raising=False)
     put_memory_roll("ada", _hill())
     seen: list[dict] = []
@@ -158,11 +158,11 @@ def test_mcp_deal_calls_handler_when_arn_is_unset(client: TestClient, monkeypatc
         return real(event, context)
 
     monkeypatch.setattr(tools_lambda, "handler", spy)
-    payload = _call(client, "/mcp/deal", "query_units", {"username": "ada"})
+    payload = call_tool("query_units", {"username": "ada"}, route="deal")
     assert seen and seen[0]["tool"] == "query_units"
     assert seen[0]["arguments"]["username"] == "ada"
-    text = payload["result"]["content"][0]["text"]
-    assert json.loads(text)["unit_count"] == 2
+    assert seen[0]["route"] == "deal"
+    assert json.loads(payload)["unit_count"] == 2
 
 
 def test_call_tool_invokes_lambda_when_arn_is_set(monkeypatch):

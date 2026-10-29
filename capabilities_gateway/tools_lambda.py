@@ -39,10 +39,45 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     if not isinstance(arguments, dict):
         raise TypeError("arguments must be an object")
     route = str(event.get("route") or "").strip()
-    return {"result": dispatch(name, arguments, route)}
+    from capabilities_gateway.call_log import emit_tool_line
+    from capabilities_gateway.permits import identity_for
+
+    identity = identity_for(route) if route in {"deal", "vacancy"} else "unknown"
+    params = {"name": name, "arguments": arguments}
+    try:
+        result = dispatch(name, arguments, route)
+    except Exception:
+        emit_tool_line(identity, params, "error")
+        raise
+    emit_tool_line(identity, params, "ok" if _ok(result) else "error")
+    return {"result": result}
+
+
+def _ok(result: Any) -> bool:
+    if isinstance(result, str):
+        try:
+            import json
+
+            parsed = json.loads(result)
+        except json.JSONDecodeError:
+            return True
+        result = parsed
+    if isinstance(result, dict):
+        if result.get("ok") is False:
+            return False
+        error = result.get("error")
+        if isinstance(error, str) and error.strip():
+            return False
+        if error not in (None, "", False):
+            return False
+    return True
 
 
 def dispatch(name: str, arguments: dict[str, Any], route: str = "") -> Any:
+    from capabilities_gateway.permits import tools_for
+
+    if route in {"deal", "vacancy"} and name not in tools_for(route):
+        raise ValueError(f"unknown tool: {name}")
     if name in _CHECKLIST:
         if route not in {"deal", "vacancy"}:
             raise ValueError("checklist route must be deal or vacancy")

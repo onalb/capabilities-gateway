@@ -29,5 +29,6 @@ def test_gateway_rent_roll_skill_names_ask_vacancy(client):
     assert "ask_vacancy" in text
     assert "ask_vacancy_agent" not in text
     predict = client.get("/skills/rr-predict").text
-    assert "/mcp/deal" in predict
+    assert "cre_deal_rentroll_wli" in predict
+    assert "ask_prediction_agent" in predict
     assert "forwards" in predict

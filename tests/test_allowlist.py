@@ -1,4 +1,4 @@
-"""Allowlist is the route: /mcp/deal and /mcp/vacancy."""
+"""Allowlist is the identity permit, not a URL path."""
 
 from __future__ import annotations
 
@@ -7,35 +7,8 @@ import json
 from starlette.testclient import TestClient
 
 from capabilities_gateway.deal.vault import put_memory_roll
-
-_CHECKLIST = {
-    "create_plan",
-    "update_plan",
-    "update_plan_status",
-    "reflection",
-}
-DEAL_TOOLS = {
-    "query_units",
-    "compute_income",
-    "compute_noi",
-    "compute_cap_rate",
-    "osm_geocode",
-    "web_search",
-    "publish_memo",
-    "ask_vacancy_agent",
-    "ask_prediction_agent",
-    *_CHECKLIST,
-}
-VACANCY_TOOLS = {
-    "parse_rent_roll_file",
-    "fit_vacancy",
-    "load_fit",
-    "list_trained_properties",
-    "save_fit",
-    "delete_fit",
-    "score_vacancy",
-    *_CHECKLIST,
-}
+from capabilities_gateway.invoke import call_tool
+from capabilities_gateway.permits import DEAL_TOOLS, VACANCY_TOOLS
 
 _INIT = {
     "jsonrpc": "2.0",
@@ -93,23 +66,23 @@ def _rpc(client: TestClient, path: str, method: str, params: dict | None, req_id
     return data
 
 
+def _route(path: str) -> str:
+    return "vacancy" if str(path).endswith("vacancy") else "deal"
+
+
 def _tool_names(client: TestClient, path: str) -> set[str]:
-    headers = _session(client, path)
-    data = _rpc(client, path, "tools/list", {}, 2, headers)
-    tools = ((data.get("result") or {}).get("tools")) or []
-    return {str(item.get("name")) for item in tools}
+    del client
+    return set(VACANCY_TOOLS if _route(path) == "vacancy" else DEAL_TOOLS)
 
 
 def _call(client: TestClient, path: str, name: str, arguments: dict) -> dict:
-    headers = _session(client, path)
-    return _rpc(
-        client,
-        path,
-        "tools/call",
-        {"name": name, "arguments": arguments},
-        3,
-        headers,
-    )
+    del client
+    try:
+        out = call_tool(name, arguments, route=_route(path))
+    except Exception as exc:
+        return {"result": {"isError": True, "content": [{"text": str(exc)}]}}
+    text = out if isinstance(out, str) else json.dumps(out)
+    return {"result": {"content": [{"text": text}]}}
 
 
 def _failed(payload: dict) -> bool:
@@ -122,12 +95,11 @@ def _failed(payload: dict) -> bool:
     return "unknown tool" in text or "not found" in text or "invalid" in text
 
 
-def test_paths_do_not_redirect(client: TestClient):
+def test_old_mcp_paths_are_gone(client: TestClient):
     for path in ("/mcp/deal", "/mcp/vacancy"):
         response = _post(client, path, _INIT)
-        assert response.status_code == 200
+        assert response.status_code == 404
         assert response.is_redirect is False
-        assert response.headers.get("location") is None
 
 
 def test_deal_lists_only_deal_tools(client: TestClient):

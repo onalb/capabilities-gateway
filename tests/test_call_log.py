@@ -35,7 +35,7 @@ def test_deal_tool_call_emits_ok_line(client: TestClient, capsys):
     )
     assert payload.get("error") is None
     lines = _tool_lines(capsys.readouterr().out)
-    assert lines == ["TOOL path=/mcp/deal tool=query_units status=ok"]
+    assert lines == ["TOOL identity=cre_deal_rentroll_wli tool=query_units status=ok"]
     assert "ada" not in lines[0]
     assert "1500" not in lines[0]
 
@@ -45,7 +45,7 @@ def test_rejected_tool_call_emits_error_line(client: TestClient, capsys):
     payload = _call(client, "/mcp/deal", "fit_vacancy", {"plans": [{"plan": "A1"}]})
     assert payload.get("result", {}).get("isError") is True or payload.get("error")
     lines = _tool_lines(capsys.readouterr().out)
-    assert lines == ["TOOL path=/mcp/deal tool=fit_vacancy status=error"]
+    assert lines == ["TOOL identity=cre_deal_rentroll_wli tool=fit_vacancy status=error"]
     assert "A1" not in lines[0]
 
 
@@ -74,7 +74,7 @@ def test_tool_call_summary_omits_bytes_names_and_secrets(client: TestClient, cap
     assert len(lines) == 1
     line = lines[0]
     assert line.startswith(
-        'TOOL path=/mcp/vacancy tool=parse_rent_roll_file status='
+        'TOOL identity=cre_vacancy_wli tool=parse_rent_roll_file status='
     )
     assert 'property="Hill"' in line
     assert 'plan="1x1"' in line

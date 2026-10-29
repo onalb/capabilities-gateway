@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 _LOG = logging.getLogger("capabilities.tool")
 
-_PATHS = {"/mcp/deal", "/mcp/vacancy"}
+_IDENTITIES = {"cre_deal_rentroll_wli", "cre_vacancy_wli"}
 _TOOL_NAME = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?:\+?\d{1,3}[\s.\-]?)?(?:\(?\d{3}\)?[\s.\-]?)\d{3}[\s.\-]?\d{4}")
@@ -115,10 +115,10 @@ def argument_summary(params: Mapping[str, Any] | None) -> str:
     return " ".join(f'{key}="{value}"' for key, value in fields if value)
 
 
-def format_tool_line(path: str, params: Mapping[str, Any] | None, status: str) -> str:
-    path_token = path if path in _PATHS else "/mcp/unknown"
+def format_tool_line(identity: str, params: Mapping[str, Any] | None, status: str) -> str:
+    identity_token = identity if identity in _IDENTITIES else "unknown"
     status_token = "ok" if status == "ok" else "error"
-    line = f"TOOL path={path_token} tool={_tool_name(params)} status={status_token}"
+    line = f"TOOL identity={identity_token} tool={_tool_name(params)} status={status_token}"
     summary = argument_summary(params)
     if summary:
         line = f"{line} {summary}"
@@ -184,9 +184,9 @@ def status_for_result(result: Any) -> str:
     return "ok"
 
 
-def emit_tool_line(path: str, params: Mapping[str, Any] | None, status: str) -> None:
+def emit_tool_line(identity: str, params: Mapping[str, Any] | None, status: str) -> None:
     _ensure_log()
-    _LOG.info("%s", format_tool_line(path, params, status))
+    _LOG.info("%s", format_tool_line(identity, params, status))
 
 
 class ToolCallLog:
@@ -199,10 +199,14 @@ class ToolCallLog:
         if getattr(ctx, "method", None) != "tools/call":
             return await call_next(ctx)
         params = getattr(ctx, "params", None)
+        identity = {
+            "/mcp/deal": "cre_deal_rentroll_wli",
+            "/mcp/vacancy": "cre_vacancy_wli",
+        }.get(self.path, self.path)
         try:
             result = await call_next(ctx)
         except Exception:
-            emit_tool_line(self.path, params, "error")
+            emit_tool_line(identity, params, "error")
             raise
-        emit_tool_line(self.path, params, status_for_result(result))
+        emit_tool_line(identity, params, status_for_result(result))
         return result

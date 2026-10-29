@@ -17,7 +17,14 @@ def tools_lambda_arn() -> str:
 
 
 def call_tool(name: str, arguments: dict | None = None, *, route: str = "") -> Any:
-    """Run one gateway tool. ``route`` is only for the four checklist tools."""
+    """Run one gateway tool. ``route`` selects the identity's permit and checklist."""
+    from capabilities_gateway.call_log import emit_tool_line
+    from capabilities_gateway.permits import identity_for, tools_for
+
+    if route and name not in tools_for(route):
+        identity = identity_for(route) if route in {"deal", "vacancy"} else "unknown"
+        emit_tool_line(identity, {"name": name, "arguments": arguments or {}}, "error")
+        raise ValueError(f"unknown tool: {name}")
     event: dict[str, Any] = {"tool": name, "arguments": dict(arguments or {})}
     if route:
         event["route"] = route
