@@ -1,0 +1,103 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "capabilities_gateway/**"
+      - "skills/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - ".dockerignore"
+  workflow_dispatch:
+
+concurrency:
+  group: capabilities-gateway-deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      apprunner: ${{ steps.filter.outputs.apprunner }}
+      lambda: ${{ steps.filter.outputs.lambda }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+          apprunner=false
+          lambda=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            apprunner=true
+            lambda=true
+          else
+            before="${{ github.event.before }}"
+            if [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              files="$(git ls-tree -r --name-only HEAD)"
+            else
+              files="$(git diff --name-only "$before" "${{ github.sha }}")"
+            fi
+            printf '%s\n' "$files"
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                capabilities_gateway/*|skills/*|requirements.txt|Dockerfile|.dockerignore)
+                  apprunner=true
+                  ;;
+              esac
+              case "$f" in
+                capabilities_gateway/*|requirements.txt)
+                  lambda=true
+                  ;;
+              esac
+            done <<<"$files"
+          fi
+          echo "apprunner=$apprunner" >> "$GITHUB_OUTPUT"
+          echo "lambda=$lambda" >> "$GITHUB_OUTPUT"
+
+  apprunner:
+    needs: changes
+    if: needs.changes.outputs.apprunner == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::226721156429:role/GitHubActionsDeploy
+          aws-region: us-east-1
+          role-session-name: gha-capabilities-apprunner
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push
+        env:
+          IMAGE: 226721156429.dkr.ecr.us-east-1.amazonaws.com/capabilities-gateway:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build -f Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Roll App Runner
+        run: bash deploy/ci_roll_image.sh "arn:aws:apprunner:us-east-1:226721156429:service/capabilities-gateway/75e822543ff74527a621e654e17e24ad" "$IMAGE"
+
+  lambda:
+    needs: changes
+    if: needs.changes.outputs.lambda == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::226721156429:role/GitHubActionsDeploy
+          aws-region: us-east-1
+          role-session-name: gha-capabilities-lambda
+      - name: Publish tools Lambda
+        run: python3 deploy/ci_publish_lambda.py
