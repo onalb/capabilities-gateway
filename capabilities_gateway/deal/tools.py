@@ -306,30 +306,6 @@ def _trained_property(name: str) -> str:
     return str(view.get("property") or "").strip()
 
 
-def _roll_plan_table(roll: Any, as_of: str = "") -> list[dict[str, Any]]:
-    """Aggregated per-plan groups of a vault roll: {plan, renovated, units, vacant}.
-
-    Same filtering the old in-gateway fit used: units whose occupancy contains
-    'model' or 'excluded' are skipped. This table is fit transiently by the
-    vacancy app; it is never saved.
-    """
-    day = (as_of or "").strip() or getattr(roll, "as_of", "")
-    counts: dict[tuple[str, int], list[int]] = {}
-    for unit in getattr(roll, "units", None) or []:
-        occ = (getattr(unit, "occupancy", None) or "").lower()
-        if "model" in occ or "excluded" in occ:
-            continue
-        plan = (getattr(unit, "unit_type", None) or "").strip() or "unknown"
-        renovated = 1 if int(getattr(unit, "renovated", 0) or 0) else 0
-        bucket = counts.setdefault((plan, renovated), [0, 0])
-        bucket[0] += 1
-        bucket[1] += 1 if unit.vacant_on(day) else 0
-    return [
-        {"plan": plan, "renovated": renovated, "units": total, "vacant": vacant}
-        for (plan, renovated), (total, vacant) in sorted(counts.items())
-    ]
-
-
 def ask_prediction_agent(
     horizon_months: int = 12,
     question: str = "",
@@ -340,12 +316,10 @@ def ask_prediction_agent(
     """Forward a forecast or floor-plan vacancy question to the vacancy app MCP
     tool ask_vacancy.
 
-    VACANCY_MCP_URL is that app's POST /mcp. This tool does not parse, fit, or
-    save. When the user has a vault roll and the building is not already
-    trained, its aggregated plan table is attached as ask_vacancy plan_table
-    so the vacancy app fits it transiently (never saved). A saved fit for
-    that building — or a question that names a different building — stays
-    on the trained store, never a substitute.
+    VACANCY_MCP_URL is that app's POST /mcp. This tool does not parse, fit,
+    or save, and it never attaches the vault roll: the vacancy app answers
+    only from its trained store, exactly as its own UI does. A building with
+    no saved fit gets the not-trained reply naming the trained properties.
     """
     from capabilities_gateway.deal.predict import (
         building_phrase,
@@ -356,30 +330,26 @@ def ask_prediction_agent(
     )
 
     ctx = None
-    plan_table: list[dict[str, Any]] = []
+    trained = ""
     try:
         roll = _roll(username)
         if roll is not None:
             day = (as_of or "").strip() or roll.as_of
             ctx = vault_facts(roll, day)
-            # Attach this roll's plan groups unless the question names a different
-            # building: that ask stays on the trained store, never a substitute.
+            # Only when the ask is about THIS vault roll (or names no building)
+            # does the saved-fit check steer the prompt; a different building
+            # always goes through the load_fit / not-trained instruction.
             spoken = building_phrase(question or "")
             if not spoken or user_named_property(question or "", ctx["property_name"]):
-                table = _roll_plan_table(roll, day)
                 label = display_building_label(ctx["property_name"], spoken)
                 trained = _trained_property(label) or _trained_property(ctx["property_name"])
-                # A saved fit already has the trained plan_keys (1x1 / 2x1).
-                # The vault table can be bedroom counts (1 / 2) — do not
-                # override the catalog the vacancy UI would use.
-                plan_table = [] if trained else table
         result = forecast(
             username,
             question,
             horizon_months=int(horizon_months or 12),
             vault=ctx,
             session_id=session_id,
-            plan_table=plan_table,
+            trained=bool(trained),
         )
     except Exception as exc:  # noqa: BLE001 — tool error, do not crash the MCP call
         result = {"ok": False, "error": str(exc), "source": "vacancy-prediction-agent"}

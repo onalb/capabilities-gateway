@@ -81,7 +81,7 @@ mcp = MCPServer(
         "allowlist enforces which tools each role may run. "
         "Deal capabilities: vault counts, income, NOI, cap rate, geocode, "
         "web search, memos, and ask_prediction_agent (forwards to the vacancy "
-        "app ask_vacancy, attaching the vault roll's plan table server-side). "
+        "app ask_vacancy, which answers from its trained store only). "
         "Vacancy capabilities: parse a rent roll, fit logistic regression, "
         "load a saved fit, list trained property names, save a fit, delete "
         "a fit, and score one floor plan. delete_fit removes JSON only when "
@@ -234,8 +234,8 @@ def ask_prediction_agent(
     """Forecast occupancy or floor-plan vacancy. Forwards to the vacancy app MCP tool ask_vacancy.
 
     question is the user text. Reuse session_id on a follow-up. This tool does
-    not parse, fit, or save. When the user has a vault roll, its aggregated
-    plan table is attached server-side so the vacancy app fits transiently.
+    not parse, fit, or save. The vacancy app answers from its trained store
+    only — a building with no saved fit gets its not-trained reply.
     """
     return _call(
         "ask_prediction_agent",

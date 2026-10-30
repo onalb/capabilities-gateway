@@ -158,55 +158,40 @@ def test_ask_prediction_agent_posts_vacancy_ask_vacancy(monkeypatch):
     assert seen["url"] == "https://vacancy-agent.example.test/mcp"
     assert seen["name"] == "ask_vacancy"
     question = seen["arguments"]["question"]
-    assert "Score occupancy for La Cordoba" in question
+    assert "Call load_fit with that name" in question
+    assert "say La Cordoba is not trained" in question
     assert "1x1 B" not in question
     assert "do not parse" in question.lower()
     assert "what occupancy do you predict for la cordoba?" in question.lower()
     assert "/api/chat" not in seen["url"]
     assert seen["arguments"]["session_id"]
-    # The vault roll's plan groups ride along as ask_vacancy plan_table.
-    assert seen["arguments"]["plan_table"] == [
-        {"plan": "1x1 B", "renovated": 0, "units": 1, "vacant": 0}
-    ]
+    # The vault roll never rides along: the vacancy app answers from its
+    # trained store only, same as its own UI.
+    assert "plan_table" not in seen["arguments"]
 
 
-def test_ask_prediction_agent_attaches_the_vault_plan_table(monkeypatch):
+def test_ask_prediction_agent_untrained_building_gets_the_not_trained_prompt(monkeypatch):
     reset_predict_state()
     seen: dict = {}
 
     def fake_call(url, name, arguments, client_name="x"):
         seen["arguments"] = arguments
-        return "A1 is 25% vacant."
+        return "Hill is not trained."
 
     monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
     monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
-    units = [
-        {"unit_id": f"a{i}", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False}
-        for i in range(40)
-    ]
-    units += [
-        {"unit_id": f"b{i}", "unit_type": "1x1", "occupancy": "Vacant", "vacant": True}
-        for i in range(2)
-    ]
-    units += [
-        {"unit_id": f"c{i}", "unit_type": "1x1 Reno", "occupancy": "Occupied", "vacant": False}
-        for i in range(12)
-    ]
-    units += [
-        {"unit_id": f"d{i}", "unit_type": "1x1 Reno", "occupancy": "Vacant", "vacant": True}
-        for i in range(6)
-    ]
-    units += [
-        {"unit_id": "m1", "unit_type": "Model", "occupancy": "Model", "vacant": True},
-        {"unit_id": "m2", "unit_type": "2x2", "occupancy": "Excluded from stats", "vacant": False},
-    ]
     put_memory_roll(
         "ada",
         {
             "property_name": "Hill",
             "as_of": "2021-05-25",
             "layout": "one_row",
-            "units": units,
+            "units": [
+                {"unit_id": "a1", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False},
+                {"unit_id": "a2", "unit_type": "1x1", "occupancy": "Vacant", "vacant": True},
+                {"unit_id": "b1", "unit_type": "1x1 Reno", "occupancy": "Occupied", "vacant": False},
+                {"unit_id": "m1", "unit_type": "Model", "occupancy": "Model", "vacant": True},
+            ],
         },
     )
     body = json.loads(
@@ -216,22 +201,22 @@ def test_ask_prediction_agent_attaches_the_vault_plan_table(monkeypatch):
         )
     )
     assert body["ok"] is True
-    assert seen["arguments"]["plan_table"] == [
-        {"plan": "1x1", "renovated": 0, "units": 42, "vacant": 2},
-        {"plan": "1x1 Reno", "renovated": 0, "units": 18, "vacant": 6},
-    ]
+    # Never a plan_table: the vacancy app answers from its trained store.
+    assert "plan_table" not in seen["arguments"]
     prompt = seen["arguments"]["question"]
-    assert "transiently" in prompt
-    assert "must not call save_fit" in prompt
+    assert "The question names Hill" in prompt
+    assert "say Hill is not trained" in prompt
+    assert "transiently" not in prompt
+    assert "must not call save_fit" not in prompt
 
 
-def test_ask_prediction_agent_attaches_when_spoken_name_is_vault_prefix(monkeypatch):
+def test_ask_prediction_agent_untrained_spoken_vault_prefix_gets_not_trained_prompt(monkeypatch):
     reset_predict_state()
     seen: dict = {}
 
     def fake_call(url, name, arguments, client_name="x"):
         seen["arguments"] = arguments
-        return "1x1 renovated is 21% vacant."
+        return "Bay View Gardens Apartments is not trained."
 
     monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
     monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
@@ -254,12 +239,14 @@ def test_ask_prediction_agent_attaches_when_spoken_name_is_vault_prefix(monkeypa
         )
     )
     assert body["ok"] is True
-    assert seen["arguments"]["plan_table"] == [
-        {"plan": "1x1", "renovated": 0, "units": 2, "vacant": 1},
-    ]
+    assert "plan_table" not in seen["arguments"]
+    prompt = seen["arguments"]["question"]
+    assert "The question names Bay View Gardens Apartments" in prompt
+    assert "say Bay View Gardens Apartments is not trained" in prompt
+    assert "Score occupancy for Bay View Gardens Apartments" not in prompt
 
 
-def test_ask_prediction_agent_skips_plan_table_when_building_is_trained(tmp_path, monkeypatch):
+def test_ask_prediction_agent_trained_building_scores_from_the_saved_fit(tmp_path, monkeypatch):
     reset_predict_state()
     seen: dict = {}
 
@@ -365,7 +352,7 @@ def test_prediction_followup_reuses_session_and_raw_text(monkeypatch):
 
     monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
     monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
-    first = forecast("tester", "What occupancy do you predict?", vault={"property_name": "Fixture Towers"})
+    first = forecast("tester", "What occupancy do you predict?", vault={"property_name": "Fixture Towers"}, trained=True)
     second = forecast("tester", "Plan A")
     assert "Which floor plan?" in first["answer"]
     assert "0.12" in second["answer"]
@@ -396,12 +383,14 @@ def test_forecast_question_uses_vault_when_question_omits_the_building():
             "occupancy_pct": 0.92,
             "vacant_count": 13,
         },
+        trained=True,
     )
     assert "Score occupancy for La Cordoba as of 2024-06-01" in unnamed
     assert "for La Cordoba" in unnamed
     named = build_forecast_question(
         "What occupancy do you predict for La Cordoba?",
         vault={"property_name": "La Cordoba", "as_of": "2024-06-01", "unit_count": 164, "occupancy_pct": 0.92, "vacant_count": 13},
+        trained=True,
     )
     assert "Score occupancy for La Cordoba as of 2024-06-01" in named
     assert "unit_count=164" in named
@@ -417,6 +406,7 @@ def test_forecast_question_strips_vault_filename_suffix():
             "occupancy_pct": 0.9,
             "vacant_count": 25,
         },
+        trained=True,
     )
     assert "Score occupancy for Bay View Gardens Apartments as of 2021-09-30" in prompt
     assert "Score occupancy for Bay View Gardens Apartments-20210930" not in prompt

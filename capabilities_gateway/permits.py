@@ -58,7 +58,7 @@ _DESCRIPTIONS = {
     "publish_memo": "Publish a memo after the deal app sets hitl_allow.",
     "ask_prediction_agent": (
         "Forward a forecast or floor-plan vacancy question to the vacancy app "
-        "ask_vacancy. The vault roll's plan table is attached server-side."
+        "ask_vacancy. The vacancy app answers from its trained store only."
     ),
     "parse_rent_roll_file": "Parse a rent-roll spreadsheet.",
     "fit_vacancy": "Fit a vacancy model from plan counts.",

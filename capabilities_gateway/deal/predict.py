@@ -201,7 +201,7 @@ def build_forecast_question(
     question: str = "",
     horizon_months: int = 12,
     vault: dict[str, Any] | None = None,
-    plan_table: list | None = None,
+    trained: bool = False,
 ) -> str:
     """MCP ask_vacancy question: user text + do-not-parse. Never invent a building."""
     vault = vault or {}
@@ -232,17 +232,7 @@ def build_forecast_question(
         "Do not parse, upload, or train. Do not request a rent roll file. "
         "This caller is questions-only (MCP ask_vacancy). A fit may already exist."
     ]
-    if plan_table:
-        lines.append(
-            "This caller attached plan_table: per-plan group counts "
-            "({plan, renovated, units, vacant}) of THIS deal's roll, fit "
-            "transiently on the session. load_fit and score_vacancy answer "
-            "from that transient fit for this session. It is never saved, it "
-            "is not in list_trained_properties, and you must not call "
-            "save_fit for it. Do not say this building is not trained and do "
-            "not list trained properties for this question."
-        )
-    if label and same_as_vault:
+    if label and same_as_vault and trained:
         headed = f"Score occupancy for {label}"
         if as_of:
             headed += f" as of {as_of}"
@@ -253,7 +243,7 @@ def build_forecast_question(
             f"vacant_count={vault.get('vacant_count')}",
         ]
         lines.append("Book snapshot for context only (not a file to parse): " + "; ".join(bits) + ".")
-    elif label and not plan_table:
+    elif label:
         lines.append(
             f"The question names {label}. Call load_fit with that name. "
             "If load_fit says it is not saved, call list_trained_properties and say "
@@ -263,7 +253,7 @@ def build_forecast_question(
             "when no properties are trained. Do not substitute the vault property. "
             "Do not call load_fit with an empty name."
         )
-    elif not plan_table:
+    else:
         lines.append(
             "If no building is named in the question and there is no vault property, "
             "call list_trained_properties and say which properties are trained, "
@@ -279,7 +269,7 @@ def forecast(
     horizon_months: int = 12,
     vault: dict[str, Any] | None = None,
     session_id: str = "",
-    plan_table: list | None = None,
+    trained: bool = False,
 ) -> dict[str, Any]:
     """POST the vacancy app ask_vacancy tool. Reuse one session id per username."""
     state = _session(username)
@@ -294,10 +284,10 @@ def forecast(
             question,
             horizon_months=horizon_months,
             vault=vault,
-            plan_table=plan_table,
+            trained=trained,
         )
     answer = strip_skill_narration(
-        forward_ask_vacancy(prompt, state["session_id"], plan_table=plan_table)
+        forward_ask_vacancy(prompt, state["session_id"])
     )
     awaiting = looks_like_clarification(answer)
     state["awaiting_followup"] = awaiting
