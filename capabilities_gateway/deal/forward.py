@@ -7,11 +7,21 @@ from capabilities_gateway.settings import vacancy_mcp_url
 
 
 def _refuses_loop(url: str) -> bool:
-    lowered = url.lower().rstrip("/")
-    return "/mcp/deal" in lowered or lowered.endswith("/mcp/vacancy")
+    """ask_vacancy must go to the vacancy app, never to this gateway itself."""
+    low = url.lower().rstrip("/")
+    return (
+        "/mcp/deal" in low
+        or low.endswith("/mcp/vacancy")
+        or low.endswith(":8010/mcp")
+        or "bedrock-agentcore" in low
+    )
 
 
-def forward_ask_vacancy(question: str, session_id: str = "") -> str:
+def forward_ask_vacancy(
+    question: str,
+    session_id: str = "",
+    plan_table: list | None = None,
+) -> str:
     asked = (question or "").strip()
     if not asked:
         return "Name the building and the floor plan."
@@ -21,9 +31,14 @@ def forward_ask_vacancy(question: str, session_id: str = "") -> str:
             "Refusing to forward vacancy answer into the capabilities gateway. "
             "VACANCY_MCP_URL must be the vacancy app /mcp."
         )
+    arguments: dict = {"question": asked, "session_id": session_id or ""}
+    if plan_table:
+        # Aggregated per-plan groups fit transiently on the vacancy session.
+        # Never a raw roll and never saved.
+        arguments["plan_table"] = plan_table
     return call_tool(
         url,
         "ask_vacancy",
-        {"question": asked, "session_id": session_id or ""},
+        arguments,
         client_name="capabilities-gateway-deal",
     )

@@ -190,19 +190,21 @@ def emit_tool_line(identity: str, params: Mapping[str, Any] | None, status: str)
 
 
 class ToolCallLog:
-    """MCP middleware: one line for each tools/call on this path."""
-
-    def __init__(self, path: str) -> None:
-        self.path = path
+    """MCP middleware: one line for each tools/call. Identity is the role
+    (deal or vacancy) the calling app stamped in the route argument."""
 
     async def __call__(self, ctx: Any, call_next: Any) -> Any:
         if getattr(ctx, "method", None) != "tools/call":
             return await call_next(ctx)
         params = getattr(ctx, "params", None)
-        identity = {
-            "/mcp/deal": "cre_deal_rentroll_wli",
-            "/mcp/vacancy": "cre_vacancy_wli",
-        }.get(self.path, self.path)
+        args = _arguments(params)
+        route = str(args.get("route") or "").strip()
+        if route in {"deal", "vacancy"}:
+            from capabilities_gateway.permits import identity_for
+
+            identity = identity_for(route)
+        else:
+            identity = "unknown"
         try:
             result = await call_next(ctx)
         except Exception:

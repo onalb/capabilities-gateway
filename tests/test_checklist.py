@@ -1,4 +1,4 @@
-"""Shared checklist tools on /mcp/deal and /mcp/vacancy."""
+"""Shared checklist tools, per role (route=deal / route=vacancy)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 
 from test_allowlist import _call
 
-ROUTES = ("/mcp/deal", "/mcp/vacancy")
+ROUTES = ("deal", "vacancy")
 
 
 def _body(client, path: str, name: str, arguments: dict) -> dict:
@@ -179,54 +179,53 @@ def test_reflection_does_not_change_the_checklist(client, path):
     assert "score_gcr" not in reflected["text"]
 
 
-def test_failed_search_rule_is_deal_only(client):
-    created = _body(
-        client,
-        "/mcp/deal",
-        "create_plan",
-        {"tasks": "1. [pending] Search for cap rates in the Miami metro."},
-    )
-    marked = _body(
-        client,
-        "/mcp/deal",
-        "update_plan",
-        {
-            "tasks": "1. Search for cap rates in the Miami metro again",
-            "checklist": created["checklist"],
-            "last_work_tool": "web_search",
-            "last_work_status": "error",
-        },
-    )
-    assert marked["ok"] is True
-    assert marked["reason"] == "search_down"
-    assert marked["checklist"][0]["status"] == "incomplete"
-    assert "again" not in marked["checklist"][0]["text"]
-
-    vacancy = _body(
-        client,
-        "/mcp/vacancy",
-        "create_plan",
-        {"tasks": "1. [pending] Search the saved fits"},
-    )
-    installed = _body(
-        client,
-        "/mcp/vacancy",
-        "update_plan",
-        {
-            "tasks": "1. [in_progress] Search the saved fits again",
-            "checklist": vacancy["checklist"],
-            "last_work_tool": "web_search",
-            "last_work_status": "error",
-        },
-    )
-    assert installed.get("search_down") is not True
-    assert installed["reason"] != "search_down"
-    assert installed["ok"] is True
-    assert any("again" in row["text"] for row in installed["checklist"])
-
-
 def test_score_gcr_is_not_a_gateway_tool(client):
     from test_allowlist import _tool_names
 
     for path in ROUTES:
         assert "score_gcr" not in _tool_names(client, path)
+
+
+def test_update_plan_seeds_checklist_when_empty_on_deal_route(client):
+    """Planless escape hatch: with no checklist, update_plan with a numbered
+    list seeds it (deal route) instead of demanding create_plan."""
+    seeded = _body(
+        client,
+        "deal",
+        "update_plan",
+        {"tasks": "1. [in_progress] query_units\n2. [pending] compute_income"},
+    )
+    assert seeded["ok"] is True
+    assert seeded["rejected"] is False
+    assert seeded["reason"] == "seeded"
+    assert [row["text"] for row in seeded["checklist"]] == [
+        "query_units",
+        "compute_income",
+    ]
+
+
+def test_update_plan_empty_tasks_with_no_checklist_still_rejected(client):
+    blocked = _body(
+        client,
+        "deal",
+        "update_plan",
+        {"tasks": ""},
+    )
+    assert blocked["ok"] is False
+    assert blocked["rejected"] is True
+    assert blocked["reason"] == "no_checklist"
+    assert "create_plan" in blocked["text"]
+
+
+def test_update_plan_no_checklist_still_rejected_on_vacancy_route(client):
+    """The vacancy route keeps the old rule: no checklist → create_plan first."""
+    blocked = _body(
+        client,
+        "vacancy",
+        "update_plan",
+        {"tasks": "1. [in_progress] load_fit"},
+    )
+    assert blocked["ok"] is False
+    assert blocked["rejected"] is True
+    assert blocked["reason"] == "no_checklist"
+    assert "create_plan" in blocked["text"]

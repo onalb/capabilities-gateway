@@ -30,7 +30,6 @@ DEAL_TOOL_NAMES = (
     "osm_geocode",
     "web_search",
     "publish_memo",
-    "ask_vacancy_agent",
     "ask_prediction_agent",
 )
 VACANCY_ONLY_TOOL_NAMES = (
@@ -252,11 +251,9 @@ def osm_geocode(query: str, username: str = "") -> str:
     )
 
 
-def web_search(query: str, max_results: int = 5, force_fail: bool = False, username: str = "") -> str:
-    """Public web search. force_fail mirrors the deal search-down fixture."""
+def web_search(query: str, max_results: int = 5, username: str = "") -> str:
+    """Public web search."""
     del username
-    if force_fail or os.environ.get("CRE_FORCE_SEARCH_FAIL") == "1":
-        return json.dumps({"ok": False, "error": "web_search forced failure (search-down fixture)"})
     try:
         from ddgs import DDGS
 
@@ -296,33 +293,41 @@ def publish_memo(
     )
 
 
-def ask_vacancy_agent(
-    floor_plan: str | None = None,
-    username: str = "",
-    as_of: str = "",
-) -> str:
-    """Logistic vacancy probability by floor plan on this user's vault roll.
+def _trained_property(name: str) -> str:
+    """Saved fit property for a spoken or vault label, or empty if none."""
+    needle = (name or "").strip()
+    if not needle:
+        return ""
+    from capabilities_gateway.vacancy_math.tools import load_fit
 
-    Does not call the vacancy app. A vacant headcount stays query_units.
+    view = load_fit(needle)
+    if not isinstance(view, dict) or view.get("error") == "not_saved":
+        return ""
+    return str(view.get("property") or "").strip()
+
+
+def _roll_plan_table(roll: Any, as_of: str = "") -> list[dict[str, Any]]:
+    """Aggregated per-plan groups of a vault roll: {plan, renovated, units, vacant}.
+
+    Same filtering the old in-gateway fit used: units whose occupancy contains
+    'model' or 'excluded' are skipped. This table is fit transiently by the
+    vacancy app; it is never saved.
     """
-    from capabilities_gateway.deal.vacancy_agent import VacancyAgent
-
-    roll = _roll(username)
-    if roll is None:
-        return _need_file("ask_vacancy_agent")
-    day = (as_of or "").strip() or roll.as_of
-    units: list[dict[str, Any]] = []
-    for unit in roll.units:
-        occ = (unit.occupancy or "").lower()
+    day = (as_of or "").strip() or getattr(roll, "as_of", "")
+    counts: dict[tuple[str, int], list[int]] = {}
+    for unit in getattr(roll, "units", None) or []:
+        occ = (getattr(unit, "occupancy", None) or "").lower()
         if "model" in occ or "excluded" in occ:
             continue
-        units.append(
-            {
-                "plan": (unit.unit_type or "unknown").strip() or "unknown",
-                "vacant": bool(unit.vacant_on(day)),
-            }
-        )
-    return json.dumps(VacancyAgent().run(units, floor_plan=floor_plan))
+        plan = (getattr(unit, "unit_type", None) or "").strip() or "unknown"
+        renovated = 1 if int(getattr(unit, "renovated", 0) or 0) else 0
+        bucket = counts.setdefault((plan, renovated), [0, 0])
+        bucket[0] += 1
+        bucket[1] += 1 if unit.vacant_on(day) else 0
+    return [
+        {"plan": plan, "renovated": renovated, "units": total, "vacant": vacant}
+        for (plan, renovated), (total, vacant) in sorted(counts.items())
+    ]
 
 
 def ask_prediction_agent(
@@ -332,23 +337,49 @@ def ask_prediction_agent(
     username: str = "",
     as_of: str = "",
 ) -> str:
-    """Forward a forecast question to the vacancy app MCP tool ask_vacancy.
+    """Forward a forecast or floor-plan vacancy question to the vacancy app MCP
+    tool ask_vacancy.
 
-    VACANCY_MCP_URL is that app's POST /mcp. This tool does not parse, fit, or save.
+    VACANCY_MCP_URL is that app's POST /mcp. This tool does not parse, fit, or
+    save. When the user has a vault roll and the building is not already
+    trained, its aggregated plan table is attached as ask_vacancy plan_table
+    so the vacancy app fits it transiently (never saved). A saved fit for
+    that building — or a question that names a different building — stays
+    on the trained store, never a substitute.
     """
-    from capabilities_gateway.deal.predict import forecast, vault_facts
+    from capabilities_gateway.deal.predict import (
+        building_phrase,
+        display_building_label,
+        forecast,
+        user_named_property,
+        vault_facts,
+    )
 
     ctx = None
-    roll = _roll(username)
-    if roll is not None:
-        ctx = vault_facts(roll, (as_of or "").strip() or roll.as_of)
+    plan_table: list[dict[str, Any]] = []
     try:
+        roll = _roll(username)
+        if roll is not None:
+            day = (as_of or "").strip() or roll.as_of
+            ctx = vault_facts(roll, day)
+            # Attach this roll's plan groups unless the question names a different
+            # building: that ask stays on the trained store, never a substitute.
+            spoken = building_phrase(question or "")
+            if not spoken or user_named_property(question or "", ctx["property_name"]):
+                table = _roll_plan_table(roll, day)
+                label = display_building_label(ctx["property_name"], spoken)
+                trained = _trained_property(label) or _trained_property(ctx["property_name"])
+                # A saved fit already has the trained plan_keys (1x1 / 2x1).
+                # The vault table can be bedroom counts (1 / 2) — do not
+                # override the catalog the vacancy UI would use.
+                plan_table = [] if trained else table
         result = forecast(
             username,
             question,
             horizon_months=int(horizon_months or 12),
             vault=ctx,
             session_id=session_id,
+            plan_table=plan_table,
         )
     except Exception as exc:  # noqa: BLE001 — tool error, do not crash the MCP call
         result = {"ok": False, "error": str(exc), "source": "vacancy-prediction-agent"}

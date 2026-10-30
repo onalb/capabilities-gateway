@@ -112,11 +112,12 @@ def load_fit(property_name: str = "") -> dict:
     store = fits()
     if not (property_name or "").strip():
         return {"buildings": store.names()}
-    record = store.load(property_name.strip())
+    needle = property_name.strip()
+    record = store.load(needle)
     if record is None:
         return {
             "error": "not_saved",
-            "property": property_name.strip(),
+            "property": needle,
             "buildings": store.names(),
         }
     return {

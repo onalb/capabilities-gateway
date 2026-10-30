@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from capabilities_gateway.vacancy_math.store import BlobFitStore, DirectoryFitStore
-from capabilities_gateway.vacancy_math.tools import list_trained_properties, reset_store
+from capabilities_gateway.vacancy_math.store import (
+    BlobFitStore,
+    DirectoryFitStore,
+    resolve_trained_name,
+)
+from capabilities_gateway.vacancy_math.tools import list_trained_properties, load_fit, reset_store
 from test_allowlist import _call, _tool_names
 from test_checklist import _body
 
@@ -37,6 +41,36 @@ def test_two_saved_fits_return_both_property_names(tmp_path, monkeypatch):
     assert "deleted" not in result
     assert (tmp_path / "north-tower.json").is_file()
     assert (tmp_path / "south-annex.json").is_file()
+    reset_store()
+
+
+def test_resolve_trained_name_maps_vault_filename_to_saved_property():
+    names = ["Bay View Gardens Apartments"]
+    assert (
+        resolve_trained_name(
+            "Bay View Gardens Apartments-20210930-040414 - 250", names
+        )
+        == "Bay View Gardens Apartments"
+    )
+    assert resolve_trained_name("bay-view-gardens-apartments", names) == (
+        "Bay View Gardens Apartments"
+    )
+    assert resolve_trained_name("Bay View Gardens Apartments", names) == (
+        "Bay View Gardens Apartments"
+    )
+    assert resolve_trained_name("Chambers Hill", names) is None
+    assert (
+        resolve_trained_name("Bay View", ["Bay View Gardens Apartments", "Bay View Court"])
+        is None
+    )
+
+
+def test_load_fit_accepts_rent_roll_filename(tmp_path, monkeypatch):
+    _use_dir(monkeypatch, tmp_path)
+    DirectoryFitStore(tmp_path).save(_record("Bay View Gardens Apartments"))
+    result = load_fit("Bay View Gardens Apartments-20210930-040414 - 250")
+    assert result["property"] == "Bay View Gardens Apartments"
+    assert "error" not in result
     reset_store()
 
 

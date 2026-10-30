@@ -6,10 +6,10 @@ Deal and vacancy call one AgentCore MCP. Each app assumes its identity role, and
 
 | Identity | Role | Tools |
 | --- | --- | --- |
-| `cre_deal_rentroll_wli` | `CreDealRentrollWli` | `cre_ping`, `query_units`, `compute_income`, `compute_noi`, `compute_cap_rate`, `osm_geocode`, `web_search`, `publish_memo`, `ask_vacancy_agent`, `ask_prediction_agent`, `create_plan`, `update_plan`, `update_plan_status`, `reflection` |
+| `cre_deal_rentroll_wli` | `CreDealRentrollWli` | `cre_ping`, `query_units`, `compute_income`, `compute_noi`, `compute_cap_rate`, `osm_geocode`, `web_search`, `publish_memo`, `ask_prediction_agent`, `create_plan`, `update_plan`, `update_plan_status`, `reflection` |
 | `cre_vacancy_wli` | `CreVacancyWli` | `parse_rent_roll_file`, `fit_vacancy`, `list_trained_properties`, `load_fit`, `save_fit`, `delete_fit`, `score_vacancy`, `create_plan`, `update_plan`, `update_plan_status`, `reflection` |
 
-`ask_prediction_agent` forwards `{question, session_id}` to the vacancy app's own `POST /mcp` tool `ask_vacancy` (`VACANCY_MCP_URL`). That forward stays inside the tools handler. `ask_vacancy` is not on this MCP. `ask_vacancy_agent` scores floor-plan vacancy on the roll snapshot the deal app sends and does not call the vacancy app.
+`ask_prediction_agent` forwards `{question, session_id, plan_table}` to the vacancy app's own `POST /mcp` tool `ask_vacancy` (`VACANCY_MCP_URL`). That forward stays inside the tools handler. `plan_table` is attached server-side from the user's vault roll (aggregated per-plan group counts, fit transiently on the vacancy session, never saved); when the question names a different building or there is no roll, nothing is attached. `ask_vacancy` is not on this MCP. Floor-plan vacancy probability is `ask_prediction_agent` too — the in-gateway `ask_vacancy_agent` fit is gone.
 
 Skills: `GET /skills` and `GET /skills/{name}` return markdown (`rent-roll-abstract`, `citation-policy`, `underwriting`, `rr-predict`, `vacancy`). They stay HTTP. They are not Lambda and not MCP tools.
 

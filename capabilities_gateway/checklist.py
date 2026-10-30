@@ -24,7 +24,6 @@ DEAL_WORK_TOOLS = frozenset(
         "osm_geocode",
         "web_search",
         "publish_memo",
-        "ask_vacancy_agent",
         "ask_prediction_agent",
     }
 )
@@ -100,7 +99,7 @@ _INCOME_ITEM_RE = re.compile(
 )
 _QUERY_UNITS_PHRASE_RE = re.compile(r"\bquery[\s_-]*units\b", re.I)
 _DEAL_NON_HEADLINE_RE = re.compile(
-    r"\b(compute_income|compute_noi|compute_cap_rate|ask_vacancy_agent|ask_vacancy|"
+    r"\b(compute_income|compute_noi|compute_cap_rate|ask_vacancy|"
     r"ask_prediction_agent|osm_geocode|web_search|publish_memo|score_gcr|reflection)\b",
     re.I,
 )
@@ -315,23 +314,6 @@ def checklist_diff(previous: list[dict[str, str]], current: list[dict[str, str]]
 
 def _task_key(text: str) -> str:
     return _norm_task_text(text).lower()
-
-
-def _is_search_task(text: str) -> bool:
-    low = (text or "").lower()
-    if "web_search" in low:
-        return True
-    return bool(re.search(r"\bsearch\b", low))
-
-
-def _mark_search_incomplete(previous: list[dict[str, str]]) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    for item in previous:
-        if item.get("status") not in _TERMINAL_STATUSES and _is_search_task(item.get("text") or ""):
-            out.append({"text": item["text"], "status": "incomplete"})
-        else:
-            out.append({"text": item["text"], "status": item["status"]})
-    return out
 
 
 def merge_replan_checklist(
@@ -597,8 +579,6 @@ def apply_checklist(route: str, name: str, arguments: dict[str, Any] | None) -> 
             checklist,
             work_tools,
             route_name=route_name,
-            last_work_tool=last_work_tool,
-            last_work_status=last_work_status,
         )
     if name == "update_plan_status":
         return _update_plan_status(
@@ -695,10 +675,27 @@ def _update_plan(
     work_tools: frozenset[str],
     *,
     route_name: str,
-    last_work_tool: str,
-    last_work_status: str,
 ) -> dict[str, Any]:
     if not previous:
+        incoming_seed = parse_task_items(tasks, work_tools)
+        if route_name == "deal" and incoming_seed:
+            # Planless escape hatch: a single-tool turn has no create_plan on
+            # its menu, so the first plan tool it can call is update_plan.
+            # Seed the checklist exactly like create_plan would have.
+            diff = checklist_diff([], incoming_seed)
+            plan = format_checklist(incoming_seed)
+            log = plan_log_message(incoming_seed, diff, tool="update_plan")
+            return _envelope(
+                ok=True,
+                rejected=False,
+                checklist=incoming_seed,
+                reason="seeded",
+                text=f"Plan stored (planless seed):\n{plan}",
+                plan=plan,
+                log=log,
+                diff=diff,
+                changed=True,
+            )
         hint = "No checklist yet. Call create_plan first with the full numbered list."
         return _envelope(
             ok=False,
@@ -710,33 +707,6 @@ def _update_plan(
             diff=checklist_diff([], []),
         )
     incoming = parse_task_items(tasks, work_tools)
-    search_failed = (
-        route_name == "deal"
-        and last_work_tool == "web_search"
-        and last_work_status == "error"
-        and bool(incoming)
-        and all(_is_search_task(item["text"]) for item in incoming)
-    )
-    if search_failed:
-        items = _mark_search_incomplete(previous)
-        diff = checklist_diff(previous, items)
-        plan = format_checklist(items)
-        log = plan_log_message(items, diff, tool="update_plan")
-        return _envelope(
-            ok=True,
-            rejected=False,
-            checklist=items,
-            reason="search_down",
-            text=(
-                "Search already failed. Marked non-terminal search rows incomplete. "
-                "The replacement list was not installed."
-            ),
-            plan=plan,
-            log=log,
-            diff=diff,
-            changed=bool(diff["changed"]),
-            search_down=True,
-        )
     if not incoming:
         plan = format_checklist(previous)
         hint = "update_plan needs a numbered list of new tasks."
@@ -896,8 +866,6 @@ def apply_checklist(route: str, name: str, arguments: dict[str, Any] | None) -> 
             checklist,
             work_tools,
             route_name=route_name,
-            last_work_tool=last_work_tool,
-            last_work_status=last_work_status,
         )
     if name == "update_plan_status":
         return _update_plan_status(

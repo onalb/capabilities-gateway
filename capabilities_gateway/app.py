@@ -1,8 +1,9 @@
-"""Skills HTTP. Tool calls go through the one AgentCore MCP, not this process."""
+"""Skills HTTP + the one MCP route. Tool calls go through /mcp with route=deal|vacancy."""
 
 from __future__ import annotations
 
 import re
+from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -10,6 +11,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
 from capabilities_gateway.settings import SKILLS_DIR
+from capabilities_gateway.mcp_server import http_app as mcp_http_app, mcp
 
 _SKILL_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
@@ -29,6 +31,7 @@ def health(_request: Request) -> JSONResponse:
         {
             "ok": True,
             "mcp": "https://credealrentroll-25yvwacjrd.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
+            "local_mcp": "/mcp (route=deal|vacancy per call)",
             "skills": "/skills",
         }
     )
@@ -48,10 +51,20 @@ def get_skill(request: Request) -> Response:
     return PlainTextResponse(path.read_text(encoding="utf-8"), media_type="text/markdown")
 
 
+@asynccontextmanager
+async def _lifespan(_app):
+    async with mcp.session_manager.run():
+        yield
+
+
 app = Starlette(
     routes=[
         Route("/health", health, methods=["GET"]),
         Route("/skills", list_skills, methods=["GET"]),
         Route("/skills/{name}", get_skill, methods=["GET"]),
     ],
+    lifespan=_lifespan,
 )
+
+# The one MCP route: /mcp with route=deal|vacancy stamped per call.
+app.router.routes.extend(mcp_http_app().routes)

@@ -24,9 +24,10 @@ def test_skill_index_and_body(client):
     assert escaped.status_code == 404
 
 
-def test_gateway_rent_roll_skill_names_ask_vacancy(client):
+def test_gateway_rent_roll_skill_routes_floor_plan_vacancy_to_prediction(client):
     text = client.get("/skills/rent-roll-abstract").text
-    assert "ask_vacancy" in text
+    assert "ask_prediction_agent" in text
+    assert "ask_vacancy" not in text
     assert "ask_vacancy_agent" not in text
     predict = client.get("/skills/rr-predict").text
     assert "cre_deal_rentroll_wli" in predict

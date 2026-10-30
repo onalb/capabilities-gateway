@@ -1,4 +1,9 @@
-"""Register the four checklist tools on one MCP server."""
+"""Register the four checklist tools on the one MCP route.
+
+``route`` (deal or vacancy) is stamped by the calling app on every call —
+the same argument that selects the permit allowlist. The app injects the
+checklist and last work tool; this server does not keep state.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +12,7 @@ from typing import Any
 from capabilities_gateway.invoke import call_tool
 
 
-def mount_checklist_tools(mcp: Any, route: str) -> None:
-    """Model args are tasks / analysis. The app injects the checklist and last work tool."""
+def mount_checklist_tools(mcp: Any) -> None:
 
     @mcp.tool()
     def create_plan(
@@ -18,6 +22,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         last_work_status: str = "",
         ran_ok: list[str] | None = None,
         status_since_work: bool = False,
+        route: str = "",
     ) -> dict:
         """Store this turn's checklist once. A second call is rejected.
 
@@ -45,12 +50,12 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         last_work_status: str = "",
         ran_ok: list[str] | None = None,
         status_since_work: bool = False,
+        route: str = "",
     ) -> dict:
         """Replace remaining work. Keeps completed and incomplete rows.
 
-        Rejects an empty replacement and a call with no checklist.
-        On /mcp/deal, a failed web_search whose replacement is only more
-        search tasks is ok and does not install that list.
+        Rejects an empty replacement and a call with no checklist
+        (except the planless seed on the deal route).
         """
         return call_tool(
             "update_plan",
@@ -73,6 +78,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         last_work_status: str = "",
         ran_ok: list[str] | None = None,
         status_since_work: bool = False,
+        route: str = "",
     ) -> dict:
         """Apply statuses to the existing rows. A wholly new list is rejected.
 
@@ -101,6 +107,7 @@ def mount_checklist_tools(mcp: Any, route: str) -> None:
         last_work_status: str = "",
         ran_ok: list[str] | None = None,
         status_since_work: bool = False,
+        route: str = "",
     ) -> dict:
         """Store need_replan. Does not change the checklist.
 

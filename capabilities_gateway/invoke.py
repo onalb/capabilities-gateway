@@ -21,6 +21,8 @@ def call_tool(name: str, arguments: dict | None = None, *, route: str = "") -> A
     from capabilities_gateway.call_log import emit_tool_line
     from capabilities_gateway.permits import identity_for, tools_for
 
+    if route and route not in {"deal", "vacancy"}:
+        raise ValueError(f"unknown route: {route}")
     if route and name not in tools_for(route):
         identity = identity_for(route) if route in {"deal", "vacancy"} else "unknown"
         emit_tool_line(identity, {"name": name, "arguments": arguments or {}}, "error")

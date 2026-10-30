@@ -1,21 +1,33 @@
-"""Real deal tools live here: vault math, floor-plan vacancy, prediction forward."""
+"""Real deal tools live here: vault math and the prediction forward."""
 
 from __future__ import annotations
 
 import json
 
+import pytest
+
 from capabilities_gateway.deal.predict import (
     build_forecast_question,
     forecast,
+    looks_like_clarification,
     reset_predict_state,
 )
 from capabilities_gateway.deal.tools import (
     ask_prediction_agent,
-    ask_vacancy_agent,
     compute_income,
     query_units,
 )
 from capabilities_gateway.deal.vault import put_memory_roll
+from capabilities_gateway.vacancy_math.store import DirectoryFitStore
+from capabilities_gateway.vacancy_math.tools import reset_store
+
+
+@pytest.fixture(autouse=True)
+def _isolate_fits(tmp_path, monkeypatch):
+    monkeypatch.setenv("VACANCY_FIT_DIR", str(tmp_path))
+    reset_store()
+    yield
+    reset_store()
 
 
 def _hill_roll() -> dict:
@@ -110,33 +122,6 @@ def test_income_full_occupancy_uses_vacant_asking():
     assert income["estimated_full_occupancy_monthly"] == 3200.0
 
 
-def _plan_units() -> list[dict]:
-    rows = [{"unit_id": f"a{i}", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False} for i in range(40)]
-    rows += [{"unit_id": f"b{i}", "unit_type": "1x1", "occupancy": "Vacant", "vacant": True} for i in range(2)]
-    rows += [{"unit_id": f"c{i}", "unit_type": "1x1 Reno", "occupancy": "Occupied", "vacant": False} for i in range(12)]
-    rows += [{"unit_id": f"d{i}", "unit_type": "1x1 Reno", "occupancy": "Vacant", "vacant": True} for i in range(6)]
-    return rows
-
-
-def test_ask_vacancy_agent_scores_the_emptier_plan_higher():
-    put_memory_roll(
-        "ada",
-        {
-            "property_name": "Hill",
-            "as_of": "2021-05-25",
-            "layout": "one_row",
-            "units": _plan_units(),
-        },
-    )
-    out = json.loads(ask_vacancy_agent(username="ada"))
-    by = {row["plan"]: row["probability"] for row in out["plans"]}
-    assert out["agent"] == "vacancy"
-    assert out["steps"] == ["fit_vacancy_model"]
-    assert by["1x1 Reno"] > by["1x1"]
-    one = json.loads(ask_vacancy_agent(floor_plan="1x1 Reno", username="ada"))
-    assert [row["plan"] for row in one["plans"]] == ["1x1 Reno"]
-
-
 def test_ask_prediction_agent_posts_vacancy_ask_vacancy(monkeypatch):
     reset_predict_state()
     seen: dict = {}
@@ -173,12 +158,197 @@ def test_ask_prediction_agent_posts_vacancy_ask_vacancy(monkeypatch):
     assert seen["url"] == "https://vacancy-agent.example.test/mcp"
     assert seen["name"] == "ask_vacancy"
     question = seen["arguments"]["question"]
-    assert "La Cordoba" not in question
+    assert "Score occupancy for La Cordoba" in question
     assert "1x1 B" not in question
     assert "do not parse" in question.lower()
-    assert "what occupancy do you predict?" in question.lower()
+    assert "what occupancy do you predict for la cordoba?" in question.lower()
     assert "/api/chat" not in seen["url"]
     assert seen["arguments"]["session_id"]
+    # The vault roll's plan groups ride along as ask_vacancy plan_table.
+    assert seen["arguments"]["plan_table"] == [
+        {"plan": "1x1 B", "renovated": 0, "units": 1, "vacant": 0}
+    ]
+
+
+def test_ask_prediction_agent_attaches_the_vault_plan_table(monkeypatch):
+    reset_predict_state()
+    seen: dict = {}
+
+    def fake_call(url, name, arguments, client_name="x"):
+        seen["arguments"] = arguments
+        return "A1 is 25% vacant."
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    units = [
+        {"unit_id": f"a{i}", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False}
+        for i in range(40)
+    ]
+    units += [
+        {"unit_id": f"b{i}", "unit_type": "1x1", "occupancy": "Vacant", "vacant": True}
+        for i in range(2)
+    ]
+    units += [
+        {"unit_id": f"c{i}", "unit_type": "1x1 Reno", "occupancy": "Occupied", "vacant": False}
+        for i in range(12)
+    ]
+    units += [
+        {"unit_id": f"d{i}", "unit_type": "1x1 Reno", "occupancy": "Vacant", "vacant": True}
+        for i in range(6)
+    ]
+    units += [
+        {"unit_id": "m1", "unit_type": "Model", "occupancy": "Model", "vacant": True},
+        {"unit_id": "m2", "unit_type": "2x2", "occupancy": "Excluded from stats", "vacant": False},
+    ]
+    put_memory_roll(
+        "ada",
+        {
+            "property_name": "Hill",
+            "as_of": "2021-05-25",
+            "layout": "one_row",
+            "units": units,
+        },
+    )
+    body = json.loads(
+        ask_prediction_agent(
+            question="Which floor plan is more likely vacant?",
+            username="ada",
+        )
+    )
+    assert body["ok"] is True
+    assert seen["arguments"]["plan_table"] == [
+        {"plan": "1x1", "renovated": 0, "units": 42, "vacant": 2},
+        {"plan": "1x1 Reno", "renovated": 0, "units": 18, "vacant": 6},
+    ]
+    prompt = seen["arguments"]["question"]
+    assert "transiently" in prompt
+    assert "must not call save_fit" in prompt
+
+
+def test_ask_prediction_agent_attaches_when_spoken_name_is_vault_prefix(monkeypatch):
+    reset_predict_state()
+    seen: dict = {}
+
+    def fake_call(url, name, arguments, client_name="x"):
+        seen["arguments"] = arguments
+        return "1x1 renovated is 21% vacant."
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    put_memory_roll(
+        "ada",
+        {
+            "property_name": "Bay View Gardens Apartments-20210930-040414 - 250",
+            "as_of": "2021-05-25",
+            "layout": "one_row",
+            "units": [
+                {"unit_id": "1", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False},
+                {"unit_id": "2", "unit_type": "1x1", "occupancy": "Vacant", "vacant": True},
+            ],
+        },
+    )
+    body = json.loads(
+        ask_prediction_agent(
+            question="What's the predicted vacancy for Bay View Gardens Apartments?",
+            username="ada",
+        )
+    )
+    assert body["ok"] is True
+    assert seen["arguments"]["plan_table"] == [
+        {"plan": "1x1", "renovated": 0, "units": 2, "vacant": 1},
+    ]
+
+
+def test_ask_prediction_agent_skips_plan_table_when_building_is_trained(tmp_path, monkeypatch):
+    reset_predict_state()
+    seen: dict = {}
+
+    def fake_call(url, name, arguments, client_name="x"):
+        seen["arguments"] = arguments
+        return "Which floor plan? 1x1 or 2x1"
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    DirectoryFitStore(tmp_path).save(
+        {"property": "Bay View Gardens Apartments", "as_of": "2021-05-25", "groups": []}
+    )
+    reset_store()
+    put_memory_roll(
+        "ada",
+        {
+            "property_name": "Bay View Gardens Apartments-20210930-040414 - 250",
+            "as_of": "2021-09-30",
+            "layout": "one_row",
+            "units": [
+                {"unit_id": "1", "unit_type": "1", "occupancy": "Occupied", "vacant": False},
+                {"unit_id": "2", "unit_type": "2", "occupancy": "Vacant", "vacant": True},
+            ],
+        },
+    )
+    body = json.loads(
+        ask_prediction_agent(
+            question="What occupancy do you predict for Bay View Gardens Apartments?",
+            username="ada",
+        )
+    )
+    assert body["ok"] is True
+    assert "plan_table" not in seen["arguments"]
+    assert "Score occupancy for Bay View Gardens Apartments" in seen["arguments"]["question"]
+
+
+def test_ask_prediction_agent_skips_plan_table_for_another_building(monkeypatch):
+    reset_predict_state()
+    seen: dict = {}
+
+    def fake_call(url, name, arguments, client_name="x"):
+        seen["arguments"] = arguments
+        return "Bay View is not trained."
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    put_memory_roll(
+        "ada",
+        {
+            "property_name": "Hill",
+            "as_of": "2021-05-25",
+            "layout": "one_row",
+            "units": [
+                {"unit_id": "1", "unit_type": "1x1", "occupancy": "Occupied", "vacant": False},
+            ],
+        },
+    )
+    body = json.loads(
+        ask_prediction_agent(
+            question="What occupancy do you predict for Bay View?",
+            username="ada",
+        )
+    )
+    assert body["ok"] is True
+    # A different building keeps today's trained-store behavior.
+    assert "plan_table" not in seen["arguments"]
+    assert "The question names Bay View" in seen["arguments"]["question"]
+    assert "Call load_fit with that name" in seen["arguments"]["question"]
+
+
+def test_ask_prediction_agent_without_a_roll_sends_no_plan_table(monkeypatch):
+    reset_predict_state()
+    seen: dict = {}
+
+    def fake_call(url, name, arguments, client_name="x"):
+        seen["arguments"] = arguments
+        return "no properties are trained yet"
+
+    monkeypatch.setenv("VACANCY_MCP_URL", "https://vacancy-agent.example.test/mcp")
+    monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
+    body = json.loads(
+        ask_prediction_agent(
+            question="What occupancy do you predict?",
+            username="nobody",
+        )
+    )
+    assert body["ok"] is True
+    assert "plan_table" not in seen["arguments"]
+    assert "list_trained_properties" in seen["arguments"]["question"]
 
 
 def test_prediction_followup_reuses_session_and_raw_text(monkeypatch):
@@ -199,23 +369,57 @@ def test_prediction_followup_reuses_session_and_raw_text(monkeypatch):
     second = forecast("tester", "Plan A")
     assert "Which floor plan?" in first["answer"]
     assert "0.12" in second["answer"]
-    assert "Fixture Towers" not in prompts[0]
+    assert "Score occupancy for Fixture Towers" in prompts[0]
     assert prompts[1] == "Plan A"
     assert ids[0] == ids[1]
 
 
-def test_forecast_question_keeps_a_named_property_only():
+def test_aggregate_plan_label_is_a_clarification():
+    text = (
+        'Your label ("average of the 1x1 renovated and 2x1 renovated plans") '
+        "covers more than one saved group — I can't score an aggregate label "
+        "directly. Which would you like me to score? Pick one exact plan_key."
+    )
+    assert looks_like_clarification(text)
+    assert not looks_like_clarification(
+        "Predicted occupancy for 1x1 renovated is 21.4% as of 2021-05-25."
+    )
+
+
+def test_forecast_question_uses_vault_when_question_omits_the_building():
     unnamed = build_forecast_question(
         "What occupancy do you predict?",
-        vault={"property_name": "La Cordoba", "as_of": "2024-06-01", "unit_count": 164},
+        vault={
+            "property_name": "La Cordoba",
+            "as_of": "2024-06-01",
+            "unit_count": 164,
+            "occupancy_pct": 0.92,
+            "vacant_count": 13,
+        },
     )
-    assert "La Cordoba" not in unnamed
+    assert "Score occupancy for La Cordoba as of 2024-06-01" in unnamed
+    assert "for La Cordoba" in unnamed
     named = build_forecast_question(
         "What occupancy do you predict for La Cordoba?",
         vault={"property_name": "La Cordoba", "as_of": "2024-06-01", "unit_count": 164, "occupancy_pct": 0.92, "vacant_count": 13},
     )
     assert "Score occupancy for La Cordoba as of 2024-06-01" in named
     assert "unit_count=164" in named
+
+
+def test_forecast_question_strips_vault_filename_suffix():
+    prompt = build_forecast_question(
+        "What occupancy do you predict for Bay View Gardens Apartments-20210930-040414 - 250?",
+        vault={
+            "property_name": "Bay View Gardens Apartments-20210930-040414 - 250",
+            "as_of": "2021-09-30",
+            "unit_count": 250,
+            "occupancy_pct": 0.9,
+            "vacant_count": 25,
+        },
+    )
+    assert "Score occupancy for Bay View Gardens Apartments as of 2021-09-30" in prompt
+    assert "Score occupancy for Bay View Gardens Apartments-20210930" not in prompt
 
 
 def test_forecast_question_loads_a_building_that_is_not_the_vault():

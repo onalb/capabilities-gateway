@@ -18,15 +18,24 @@ def test_forward_posts_ask_vacancy_to_vacancy_mcp(monkeypatch):
         "https://vacancy-agent.example.test/mcp",
     )
     monkeypatch.setattr("capabilities_gateway.deal.forward.call_tool", fake_call)
-    text = forward_ask_vacancy("score A1 at Hill", "sess-1")
+    table = [
+        {"plan": "A1", "renovated": 0, "units": 10, "vacant": 3},
+        {"plan": "B2", "renovated": 0, "units": 8, "vacant": 1},
+    ]
+    text = forward_ask_vacancy("score A1 at Hill", "sess-1", plan_table=table)
     assert text.startswith("A1 is 25%")
     assert seen["url"] == "https://vacancy-agent.example.test/mcp"
     assert seen["name"] == "ask_vacancy"
     assert seen["arguments"]["session_id"] == "sess-1"
+    assert seen["arguments"]["plan_table"] == table
     assert seen["client_name"] == "capabilities-gateway-deal"
+    # No plan_table (a trained-building ask) sends only question + session_id.
+    seen.clear()
+    forward_ask_vacancy("score A1 at Hill", "sess-1")
+    assert "plan_table" not in seen["arguments"]
 
 
-def test_forward_refuses_deal_and_vacancy_gateway_paths(monkeypatch):
+def test_forward_refuses_gateway_urls(monkeypatch):
     def boom(*_args, **_kwargs):
         raise AssertionError("must not call the gateway")
 
@@ -34,6 +43,8 @@ def test_forward_refuses_deal_and_vacancy_gateway_paths(monkeypatch):
     for url in (
         "http://127.0.0.1:8010/mcp/deal",
         "http://127.0.0.1:8010/mcp/vacancy",
+        "http://127.0.0.1:8010/mcp",
+        "https://credealrentroll-25yvwacjrd.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
     ):
         monkeypatch.setenv("VACANCY_MCP_URL", url)
         text = forward_ask_vacancy("which plan", "sess")
