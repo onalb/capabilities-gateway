@@ -39,8 +39,8 @@ Use this only when the user asks to remove a property from training, or to remov
 2. Resolve the target with load_fit. If the user named a property, load that name. If they asked to remove every trained property, load the list with an empty property_name.
 3. If the named property is not trained, say so and do not delete.
 4. Call delete_fit without confirm. Show the returned question. Call update_plan_status. Stop and wait.
-5. If the user does not agree, do not call delete_fit with confirm. Say nothing was removed.
-6. If the user agrees, call delete_fit with confirm=true for that same property, or with all_properties true when they asked to remove every trained property. Then call update_plan_status, then tell them the JSON was deleted.
+5. If the user does not agree, do not call delete_fit again. Say nothing was removed.
+6. If the user agrees, call delete_fit again for that same property, or with all_properties true when they asked to remove every trained property. Pass confirm=true only when that argument is on the tool. Then call update_plan_status, then tell them the JSON was deleted.
 
 delete_fit does not delete on the first call. The question for one property uses the saved property name from the file. The question for every property asks whether they are sure. Pass all_properties true and leave property_name empty when the request is every trained property.
 
