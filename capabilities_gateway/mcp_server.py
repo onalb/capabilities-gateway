@@ -11,7 +11,9 @@ header is absent or unknown — call-time route checks still protect calls).
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -156,12 +158,21 @@ def compute_income(
 
 @mcp.tool()
 def compute_noi(
-    operating_expenses: float | None = None,
+    operating_expenses: Annotated[
+        float | None,
+        Field(
+            description=(
+                "Annual operating expense dollars, not a percent. "
+                "If the user gives a percent of EGI, pass annualized in-place income "
+                "times that percent. Do not pass the percent. Do not pass one month of expenses."
+            )
+        ),
+    ] = None,
     username: str = "",
     as_of: str = "",
     route: str = "",
 ) -> str:
-    """NOI from annualized in-place income minus stated expenses."""
+    """NOI from annualized in-place income minus stated annual expenses."""
     return _call(
         "compute_noi",
         {"operating_expenses": operating_expenses, "username": username, "as_of": as_of},
