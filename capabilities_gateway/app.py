@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
+from capabilities_gateway import __version__
 from capabilities_gateway.settings import SKILLS_DIR
 from capabilities_gateway.mcp_server import http_app as mcp_http_app, mcp
 
@@ -30,6 +31,7 @@ def health(_request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "ok": True,
+            "version": __version__,
             "mcp": "https://credealrentroll-25yvwacjrd.gateway.bedrock-agentcore.us-east-1.amazonaws.com/mcp",
             "local_mcp": "/mcp (route=deal|vacancy per call)",
             "skills": "/skills",
