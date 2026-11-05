@@ -115,7 +115,7 @@ def call_tool(
             {
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
-                "clientInfo": {"name": client_name, "version": "0.1.0"},
+                "clientInfo": {"name": client_name, "version": "0.1.1"},
             },
             req_id=1,
         )
