@@ -98,6 +98,13 @@ mcp = MCPServer(
 _SECURITY = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 
+def _with_roll(arguments: dict, roll: dict | None) -> dict:
+    """The deal page session stamps the rent roll. This process does not store it."""
+    if isinstance(roll, dict):
+        arguments["roll"] = roll
+    return arguments
+
+
 def _call(name: str, arguments: dict, route: str) -> str:
     """Run one tool for the calling app's role. Route violations come back as
     a structured error payload (not a framework-generic isError) so the
@@ -131,12 +138,16 @@ def query_units(
     vacant_only: bool = False,
     username: str = "",
     as_of: str = "",
+    roll: dict | None = None,
     route: str = "",
 ) -> str:
     """Read vault unit counts for username. The deal app injects username."""
     return _call(
         "query_units",
-        {"occupancy": occupancy, "vacant_only": vacant_only, "username": username, "as_of": as_of},
+        _with_roll(
+            {"occupancy": occupancy, "vacant_only": vacant_only, "username": username, "as_of": as_of},
+            roll,
+        ),
         route,
     )
 
@@ -146,12 +157,16 @@ def compute_income(
     vacant_fill_rent: float | None = None,
     username: str = "",
     as_of: str = "",
+    roll: dict | None = None,
     route: str = "",
 ) -> str:
     """In-place and full-occupancy income from the vaulted roll."""
     return _call(
         "compute_income",
-        {"vacant_fill_rent": vacant_fill_rent, "username": username, "as_of": as_of},
+        _with_roll(
+            {"vacant_fill_rent": vacant_fill_rent, "username": username, "as_of": as_of},
+            roll,
+        ),
         route,
     )
 
@@ -170,12 +185,16 @@ def compute_noi(
     ] = None,
     username: str = "",
     as_of: str = "",
+    roll: dict | None = None,
     route: str = "",
 ) -> str:
     """NOI from annualized in-place income minus stated annual expenses."""
     return _call(
         "compute_noi",
-        {"operating_expenses": operating_expenses, "username": username, "as_of": as_of},
+        _with_roll(
+            {"operating_expenses": operating_expenses, "username": username, "as_of": as_of},
+            roll,
+        ),
         route,
     )
 
@@ -186,12 +205,16 @@ def compute_cap_rate(
     noi: float | None = None,
     username: str = "",
     as_of: str = "",
+    roll: dict | None = None,
     route: str = "",
 ) -> str:
     """Implied cap rate. ask_price is required."""
     return _call(
         "compute_cap_rate",
-        {"ask_price": ask_price, "noi": noi, "username": username, "as_of": as_of},
+        _with_roll(
+            {"ask_price": ask_price, "noi": noi, "username": username, "as_of": as_of},
+            roll,
+        ),
         route,
     )
 
@@ -240,6 +263,7 @@ def ask_prediction_agent(
     session_id: str = "",
     username: str = "",
     as_of: str = "",
+    roll: dict | None = None,
     route: str = "",
 ) -> str:
     """Forecast occupancy or floor-plan vacancy. Forwards to the vacancy app MCP tool ask_vacancy.
@@ -250,13 +274,16 @@ def ask_prediction_agent(
     """
     return _call(
         "ask_prediction_agent",
-        {
-            "horizon_months": horizon_months,
-            "question": question,
-            "session_id": session_id,
-            "username": username,
-            "as_of": as_of,
-        },
+        _with_roll(
+            {
+                "horizon_months": horizon_months,
+                "question": question,
+                "session_id": session_id,
+                "username": username,
+                "as_of": as_of,
+            },
+            roll,
+        ),
         route,
     )
 

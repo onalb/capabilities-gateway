@@ -38,19 +38,28 @@ def handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     arguments = event.get("arguments") or {}
     if not isinstance(arguments, dict):
         raise TypeError("arguments must be an object")
+    arguments = dict(arguments)
+    # The deal app stamps the page-session rent roll. It is not stored here.
+    roll = arguments.pop("roll", None)
     route = str(event.get("route") or "").strip()
     from capabilities_gateway.call_log import emit_tool_line
+    from capabilities_gateway.deal import vault as deal_vault
     from capabilities_gateway.permits import identity_for
 
     identity = identity_for(route) if route in {"deal", "vacancy"} else "unknown"
     params = {"name": name, "arguments": arguments}
+    token = deal_vault.set_snapshot(roll) if isinstance(roll, dict) else None
     try:
-        result = dispatch(name, arguments, route)
-    except Exception:
-        emit_tool_line(identity, params, "error")
-        raise
-    emit_tool_line(identity, params, "ok" if _ok(result) else "error")
-    return {"result": result}
+        try:
+            result = dispatch(name, arguments, route)
+        except Exception:
+            emit_tool_line(identity, params, "error")
+            raise
+        emit_tool_line(identity, params, "ok" if _ok(result) else "error")
+        return {"result": result}
+    finally:
+        if token is not None:
+            deal_vault.reset_snapshot(token)
 
 
 def _ok(result: Any) -> bool:

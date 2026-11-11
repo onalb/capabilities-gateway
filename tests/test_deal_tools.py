@@ -59,6 +59,27 @@ def _hill_roll() -> dict:
     }
 
 
+def test_stamped_roll_is_the_vault_for_one_call(monkeypatch):
+    from capabilities_gateway.tools_lambda import handler
+
+    def boom(*_a, **_k):
+        raise AssertionError("the stamped roll must not be read from Dynamo")
+
+    monkeypatch.setattr("capabilities_gateway.deal.vault.use_dynamo", lambda: True)
+    monkeypatch.setattr("capabilities_gateway.deal.dynamo.get_item", boom)
+    body = handler(
+        {
+            "tool": "query_units",
+            "route": "deal",
+            "arguments": {"username": "ada", "roll": _hill_roll()},
+        },
+        None,
+    )
+    parsed = json.loads(body["result"])
+    assert parsed["unit_count"] == 164
+    assert parsed["property_name"] == "Hill"
+
+
 def test_query_units_and_income_math_stay_on_the_gateway():
     put_memory_roll("ada", _hill_roll())
     body = json.loads(query_units(username="ada"))

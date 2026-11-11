@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from capabilities_gateway import __version__
+
 MCP_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
@@ -115,7 +117,7 @@ def call_tool(
             {
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
-                "clientInfo": {"name": client_name, "version": "0.1.1"},
+                "clientInfo": {"name": client_name, "version": __version__},
             },
             req_id=1,
         )
